@@ -5,12 +5,14 @@ import numpy as np
 
 class Metric(ABC):
     @abstractmethod
-    def compute_value(self, gt: np.ndarray, pred: np.ndarray, **kwargs) -> float:
+    def compute_value(
+        self, pred: list[list[np.ndarray]], gt: list[list[np.ndarray]]
+    ) -> float:
         """Computes the value of the metric
 
         Args:
-            gt: Ground truth values
-            pred: Predicted values
+            pred: list of np arrays of predicted values
+            gt: list of np arrays of ground truth values
             **kwargs: Additional keyword arguments that may be required by specific metric implementations
 
 
