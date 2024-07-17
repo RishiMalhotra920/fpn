@@ -5,9 +5,7 @@ import numpy as np
 
 class Metric(ABC):
     @abstractmethod
-    def compute_value(
-        self, pred: list[list[np.ndarray]], gt: list[list[np.ndarray]]
-    ) -> float:
+    def compute_value(self, pred: list[np.ndarray], gt: list[np.ndarray]) -> float:
         """Computes the value of the metric
 
         Args:

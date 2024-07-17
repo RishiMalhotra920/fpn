@@ -1,36 +1,57 @@
 import numpy as np
-from fpn.evaluation.metrics.MAPMetric import MAPMetric
+
+from fpn.evaluation.metrics.MAPMetric import (
+    YOLOAccuracyMetric,
+    YOLOBackgroundMetric,
+    YOLOLocalizationMetric,
+    YOLOOtherMetric,
+)
 
 
 # test for two images three boxes each - 100% correctness
-def test_MAP_metric_identical_boxes_with_full_correctness(
+def test_metrics_identical_boxes_with_full_correctness(
     pred_gt_high_iou_boxes_with_high_confidence_and_class,
 ):
     pred_one = pred_gt_high_iou_boxes_with_high_confidence_and_class[1]
 
     # 2 images, 3 boxes each.
-    gt_image = [pred_one for _ in range(3)]
-    gt_image_2 = [pred_one for _ in range(3)]
-    gt = [gt_image, gt_image_2]
-    pred = gt.copy()
-    metric = MAPMetric(0.5)
+    pred_image = np.vstack([pred_one, pred_one, pred_one])
+    gt_image = np.vstack([pred_one, pred_one, pred_one])
 
-    assert metric.compute_value(pred, gt) == 1.0
+    pred_images = [pred_image, pred_image]
+    gt_images = [gt_image, gt_image]
+
+    accuracy_metric = YOLOAccuracyMetric()
+    localization_metric = YOLOLocalizationMetric()
+    other_metric = YOLOOtherMetric()
+    background_metric = YOLOBackgroundMetric()
+
+    assert accuracy_metric.compute_value(pred_images, gt_images) == 1.0, "Accuracy metric failed"
+    assert localization_metric.compute_value(pred_images, gt_images) == 0.0, "Localization metric failed"
+    assert other_metric.compute_value(pred_images, gt_images) == 0.0, "Other metric failed"
+    assert background_metric.compute_value(pred_images, gt_images) == 0.0, "Background metric failed"
 
 
-def test_MAP_metric_boxes_with_zero_correctness(
+def test_MAP_metric_boxes_in_background_class(
     pred_gt_two_boxes_no_overlap_correct_class,
 ):
     pred_one, gt_one = pred_gt_two_boxes_no_overlap_correct_class
 
     # 2 images, 3 boxes each.
-    pred_image = [pred_one for _ in range(3)]
-    gt_image = [gt_one for _ in range(3)]
+    pred_image = np.vstack([pred_one, pred_one, pred_one])
+    gt_image = np.vstack([gt_one, gt_one, gt_one])
     pred = [pred_image, pred_image]
     gt = [gt_image, gt_image]
-    metric = MAPMetric(0.5)
 
-    assert metric.compute_value(pred, gt) == 0.0
+    accuracy_metric = YOLOAccuracyMetric()
+    localization_metric = YOLOLocalizationMetric()
+    other_metric = YOLOOtherMetric()
+    background_metric = YOLOBackgroundMetric()
+
+    assert accuracy_metric.compute_value(pred, gt) == 0.0, "Accuracy metric failed"
+    assert localization_metric.compute_value(pred, gt) == 0.0, "Localization metric failed"
+    assert other_metric.compute_value(pred, gt) == 0.0, "Other metric failed"
+    assert background_metric.compute_value(pred, gt) == 1.0, "Background metric failed"
 
 
 def test_MAP_metric_num_pred_neq_num_gt(
@@ -40,32 +61,92 @@ def test_MAP_metric_num_pred_neq_num_gt(
     pred, gt = pred_gt_high_iou_boxes_with_high_confidence_and_class
 
     # TP: 2, FP: 1.
-    pred_image_1 = [pred for _ in range(3)]
-    gt_image_1 = [gt for _ in range(2)]
+    pred_image_1 = np.array([pred for _ in range(3)])
+    gt_image_1 = np.array([gt for _ in range(2)])
 
     # TP: 0, FP: 0.
-    pred_image_2 = []
-    gt_image_2 = [gt for _ in range(3)]
+    pred_image_2 = np.array([])
+    gt_image_2 = np.array([gt for _ in range(3)])
 
     # TP: 3, FP: 0
-    pred_image_3 = [pred for _ in range(3)]
-    gt_image_3 = [gt for _ in range(3)]
+    pred_image_3 = np.array([pred for _ in range(3)])
+    gt_image_3 = np.array([gt for _ in range(3)])
 
     pred = [pred_image_1, pred_image_2, pred_image_3]
     gt = [gt_image_1, gt_image_2, gt_image_3]
-    metric = MAPMetric(0.5)
 
-    # precision per class is [5/6]
+    accuracy_metric = YOLOAccuracyMetric()
+    localization_metric = YOLOLocalizationMetric()
+    other_metric = YOLOOtherMetric()
+    background_metric = YOLOBackgroundMetric()
 
-    assert metric.compute_value(pred, gt) == 5 / 6
+    assert accuracy_metric.compute_value(pred, gt) == 5 / 6, "Accuracy metric failed"
+    assert localization_metric.compute_value(pred, gt) == 0.0, "Localization metric failed"
+    assert other_metric.compute_value(pred, gt) == 0.0, "Other metric failed"
+    assert background_metric.compute_value(pred, gt) == 1 / 6, "Background metric failed"
 
 
-# more predictions than labels per image test
+def test_metrics_background_error(
+    pred_gt_low_iou_box_wrong_class_high_confidence, pred_gt_two_boxes_no_overlap_correct_class
+):
+    pred, gt = pred_gt_low_iou_box_wrong_class_high_confidence  # background. iou = 0.04
+    pred2, gt2 = pred_gt_two_boxes_no_overlap_correct_class  # background
 
-# test for five images, two boxes each. prediction has bounding boxes correct, but classes all wrong.
-# test for five images, two boxes each. prediction has zero boxes.
+    # 5 images, 2 boxes each.
+    pred_image = np.vstack([pred, pred2])
+    gt_image = np.vstack([gt, gt2])
+    pred_images = [pred_image for _ in range(5)]
+    gt_images = [gt_image for _ in range(5)]
 
-# test for two images, four boxes each - different confidence values. checking if sorting works correctly: 100% correctness
+    accuracy_metric = YOLOAccuracyMetric()
+    localization_metric = YOLOLocalizationMetric()
+    other_metric = YOLOOtherMetric()
+    background_metric = YOLOBackgroundMetric()
+
+    assert accuracy_metric.compute_value(pred_images, gt_images) == 0.0, "Accuracy metric failed"
+    assert localization_metric.compute_value(pred_images, gt_images) == 0.0, "Localization metric failed"
+    assert other_metric.compute_value(pred_images, gt_images) == 0.0, "Other metric failed"
+    assert background_metric.compute_value(pred_images, gt_images) == 1.0, "Background metric failed"
+
+
+def test_metrics_localization_error(pred_gt_medium_iou_boxes_with_high_confidence_and_class):
+    pred, gt = pred_gt_medium_iou_boxes_with_high_confidence_and_class  # background. iou = 0.04
+
+    # 5 images, 2 boxes each.
+    pred_image = np.vstack([pred])
+    gt_image = np.vstack([gt])
+    pred_images = [pred_image for _ in range(5)]
+    gt_images = [gt_image for _ in range(5)]
+
+    accuracy_metric = YOLOAccuracyMetric()
+    localization_metric = YOLOLocalizationMetric()
+    other_metric = YOLOOtherMetric()
+    background_metric = YOLOBackgroundMetric()
+
+    assert accuracy_metric.compute_value(pred_images, gt_images) == 0.0, "Accuracy metric failed"
+    assert localization_metric.compute_value(pred_images, gt_images) == 1.0, "Localization metric failed"
+    assert other_metric.compute_value(pred_images, gt_images) == 0.0, "Other metric failed"
+    assert background_metric.compute_value(pred_images, gt_images) == 0.0, "Background metric failed"
+
+
+def test_metrics_other_error(pred_gt_high_iou_boxes_with_wrong_class):
+    pred, gt = pred_gt_high_iou_boxes_with_wrong_class  # background. iou = 0.04
+
+    # 5 images, 2 boxes each.
+    pred_image = np.vstack([pred])
+    gt_image = np.vstack([gt])
+    pred_images = [pred_image for _ in range(5)]
+    gt_images = [gt_image for _ in range(5)]
+
+    accuracy_metric = YOLOAccuracyMetric()
+    localization_metric = YOLOLocalizationMetric()
+    other_metric = YOLOOtherMetric()
+    background_metric = YOLOBackgroundMetric()
+
+    assert accuracy_metric.compute_value(pred_images, gt_images) == 0.0, "Accuracy metric failed"
+    assert localization_metric.compute_value(pred_images, gt_images) == 0.0, "Localization metric failed"
+    assert other_metric.compute_value(pred_images, gt_images) == 1.0, "Other metric failed"
+    assert background_metric.compute_value(pred_images, gt_images) == 0.0, "Background metric failed"
 
 
 # test iou function with two boxes with 0 overlap
@@ -75,27 +156,14 @@ def test_compute_iou_no_overlap_and_full_overlap(
     pred, gt = pred_gt_two_boxes_no_overlap_correct_class
     pred, gt = pred[:4], gt[:4]
 
-    metric = MAPMetric(0.5)
-    assert np.all(
-        metric._compute_iou(np.array([pred]), np.array([gt, gt, gt]))
-        == np.array([0.0, 0.0, 0.0])
-    )
+    metric = YOLOAccuracyMetric()
+    assert np.all(metric._compute_iou(np.array([pred]), np.array([gt, gt, gt])) == np.array([0.0, 0.0, 0.0]))
+    assert np.all(metric._compute_iou(np.array([pred]), np.array([gt])) == np.array([0.0]))
+    assert np.all(metric._compute_iou(np.array([pred, pred]), np.array([gt, gt])) == np.array([0.0, 0.0]))
+    assert np.all(metric._compute_iou(np.array([pred, pred]), np.array([gt])) == np.array([0.0, 0.0]))
 
     assert np.all(
-        metric._compute_iou(np.array([pred]), np.array([gt])) == np.array([0.0])
-    )
-    assert np.all(
-        metric._compute_iou(np.array([pred, pred]), np.array([gt, gt]))
-        == np.array([0.0, 0.0])
-    )
-    assert np.all(
-        metric._compute_iou(np.array([pred, pred]), np.array([gt]))
-        == np.array([0.0, 0.0])
-    )
-
-    assert np.all(
-        metric._compute_iou(np.array([pred, pred, pred]), np.array([pred, pred, pred]))
-        == np.array([1.0, 1.0, 1.0])
+        metric._compute_iou(np.array([pred, pred, pred]), np.array([pred, pred, pred])) == np.array([1.0, 1.0, 1.0])
     )
 
 
@@ -104,41 +172,13 @@ def test_compute_iou_mixed_overlaps(
     pred_gt_two_pred_boxes_close_to_gt_box_wrong_order_of_confidence,
 ):
     pred1, gt1 = pred_gt_two_boxes_no_overlap_correct_class
-    (pred2, pred3), gt2 = (
-        pred_gt_two_pred_boxes_close_to_gt_box_wrong_order_of_confidence
-    )
+    (pred2, pred3), gt2 = pred_gt_two_pred_boxes_close_to_gt_box_wrong_order_of_confidence
     pred1, gt1 = pred1[:4], gt1[:4]
     pred2, pred3, gt2 = pred2[:4], pred3[:4], gt2[:4]
 
-    metric = MAPMetric(0.5)
+    metric = YOLOAccuracyMetric()
 
     assert np.all(
         metric._compute_iou(np.array([pred1, pred2, pred3]), np.array([gt1, gt2, gt2]))
         == np.array([0.0, (40 * 40) / (100 * 100), (80 * 80) / (100 * 100)])
     )
-
-
-def test_unstable_interpolated_precision_recall(sample_unstable_precisions_and_recalls):
-    precision, recall, interp_precision, interp_recall = (
-        sample_unstable_precisions_and_recalls
-    )
-    metric = MAPMetric(0.5)
-    interpolated_precision, interpolated_recall = metric._interpolated_precision_recall(
-        precision, recall
-    )
-
-    assert np.all(interpolated_precision == interp_precision)
-    assert np.all(interpolated_recall == interp_recall)
-
-
-def test_stable_interpolated_precision_recall(sample_stable_precisions_and_recalls):
-    precision, recall, interp_precision, interp_recall = (
-        sample_stable_precisions_and_recalls
-    )
-    metric = MAPMetric(0.5)
-    interpolated_precision, interpolated_recall = metric._interpolated_precision_recall(
-        precision, recall
-    )
-
-    assert np.all(interpolated_precision == interp_precision)
-    assert np.all(interpolated_recall == interp_recall)

@@ -18,6 +18,25 @@ def pred_gt_high_iou_boxes_with_high_confidence_and_class():
 
 
 @pytest.fixture
+def pred_gt_medium_iou_boxes_with_high_confidence_and_class():
+    """medium IoU boxes with high confidence and class"""
+    # approx 25% iou
+    gt = np.array([105, 84, 798, 504, 3, 1])
+    pred = np.array([50, 50, 300, 504, 3, 0.8])
+
+    return pred, gt
+
+
+@pytest.fixture
+def pred_gt_high_iou_boxes_with_wrong_class():
+    """low IoU boxes with class and high IoU"""
+    gt = np.array([105, 84, 798, 504, 3, 1])
+    pred = np.array([105, 84, 798, 504, 4, 0.8])
+
+    return pred, gt
+
+
+@pytest.fixture
 def pred_gt_identical_boxes():
     """identical boxes with full correctness"""
     gt = np.array([100, 200, 300, 400, 4, 1])
