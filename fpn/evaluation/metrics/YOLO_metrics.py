@@ -1,6 +1,7 @@
 import numpy as np
 
 from fpn.evaluation.metrics.metric import Metric
+from fpn.utils.compute_iou import compute_iou
 
 
 class YOLOMetric(Metric):
@@ -70,7 +71,7 @@ class YOLOMetric(Metric):
             if not np.any(unmatched_gt_boxes_mask):
                 break
             print("this is unmatched_gt_boxes_mask", unmatched_gt_boxes_mask)
-            ious = self._compute_iou(pred_bbox[np.newaxis, :4], gt_image[unmatched_gt_boxes_mask, :4])
+            ious = compute_iou(pred_bbox[np.newaxis, :4], gt_image[unmatched_gt_boxes_mask, :4])
 
             print("this is ious", ious)
             highest_iou_idx = np.argmax(ious)
@@ -97,30 +98,6 @@ class YOLOMetric(Metric):
         print("this is localization", localization)
 
         return correct, localization, other, background, pred_boxes_in_image
-
-    def _compute_iou(self, box1: np.ndarray, box2: np.ndarray) -> np.ndarray:
-        """Computes the intersection over union between two twod arrays of bounding boxes
-
-        Args:
-            box1 (np.ndarray): nx4 bounding boxes. box1[i] is of the form [x1, y1, x2, y2]. if n is 1, then the single bounding box is compared to all bounding boxes in box2
-            box2 (np.ndarray): nx4 bounding boxes. box1[i] is of the form [x1, y1, x2, y2]. if n is 1, then the single bounding box is compared to all bounding boxes in box1
-
-        Returns:
-            float: intersection over union
-        """
-
-        x1 = np.maximum(box1[:, 0], box2[:, 0])
-        y1 = np.maximum(box1[:, 1], box2[:, 1])
-        x2 = np.minimum(box1[:, 2], box2[:, 2])
-        y2 = np.minimum(box1[:, 3], box2[:, 3])
-
-        intersection = np.maximum(0, x2 - x1) * np.maximum(0, y2 - y1)
-        area1 = (box1[:, 2] - box1[:, 0]) * (box1[:, 3] - box1[:, 1])
-        area2 = (box2[:, 2] - box2[:, 0]) * (box2[:, 3] - box2[:, 1])
-
-        union = area1 + area2 - intersection
-
-        return intersection / union
 
 
 class YOLOAccuracyMetric(YOLOMetric):

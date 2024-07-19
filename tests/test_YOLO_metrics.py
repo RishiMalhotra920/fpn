@@ -1,11 +1,12 @@
 import numpy as np
 
-from fpn.evaluation.metrics.MAPMetric import (
+from fpn.evaluation.metrics.YOLO_metrics import (
     YOLOAccuracyMetric,
     YOLOBackgroundMetric,
     YOLOLocalizationMetric,
     YOLOOtherMetric,
 )
+from fpn.utils.compute_iou import compute_iou
 
 
 # test for two images three boxes each - 100% correctness
@@ -157,14 +158,12 @@ def test_compute_iou_no_overlap_and_full_overlap(
     pred, gt = pred[:4], gt[:4]
 
     metric = YOLOAccuracyMetric()
-    assert np.all(metric._compute_iou(np.array([pred]), np.array([gt, gt, gt])) == np.array([0.0, 0.0, 0.0]))
-    assert np.all(metric._compute_iou(np.array([pred]), np.array([gt])) == np.array([0.0]))
-    assert np.all(metric._compute_iou(np.array([pred, pred]), np.array([gt, gt])) == np.array([0.0, 0.0]))
-    assert np.all(metric._compute_iou(np.array([pred, pred]), np.array([gt])) == np.array([0.0, 0.0]))
+    assert np.all(compute_iou(np.array([pred]), np.array([gt, gt, gt])) == np.array([0.0, 0.0, 0.0]))
+    assert np.all(compute_iou(np.array([pred]), np.array([gt])) == np.array([0.0]))
+    assert np.all(compute_iou(np.array([pred, pred]), np.array([gt, gt])) == np.array([0.0, 0.0]))
+    assert np.all(compute_iou(np.array([pred, pred]), np.array([gt])) == np.array([0.0, 0.0]))
 
-    assert np.all(
-        metric._compute_iou(np.array([pred, pred, pred]), np.array([pred, pred, pred])) == np.array([1.0, 1.0, 1.0])
-    )
+    assert np.all(compute_iou(np.array([pred, pred, pred]), np.array([pred, pred, pred])) == np.array([1.0, 1.0, 1.0]))
 
 
 def test_compute_iou_mixed_overlaps(
@@ -179,6 +178,6 @@ def test_compute_iou_mixed_overlaps(
     metric = YOLOAccuracyMetric()
 
     assert np.all(
-        metric._compute_iou(np.array([pred1, pred2, pred3]), np.array([gt1, gt2, gt2]))
+        compute_iou(np.array([pred1, pred2, pred3]), np.array([gt1, gt2, gt2]))
         == np.array([0.0, (40 * 40) / (100 * 100), (80 * 80) / (100 * 100)])
     )
