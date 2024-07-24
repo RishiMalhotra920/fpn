@@ -4,6 +4,7 @@ import sys
 
 import numpy as np
 import pytest
+import torch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))  # noqa: E402
 
@@ -128,3 +129,21 @@ def sample_stable_precisions_and_recalls():
     recall = np.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
 
     return precision, recall, precision.copy(), recall.copy()
+
+
+@pytest.fixture
+def image_224_by_224():
+    return torch.randn(3, 800, 800, dtype=torch.float32)
+
+
+@pytest.fixture
+def anchor_scales():
+    anchor_scales = [1, 2, 4]
+    return anchor_scales
+
+
+@pytest.fixture
+def anchor_ratios():
+    anchor_ratios = [0.5, 1, 2]
+
+    return anchor_ratios

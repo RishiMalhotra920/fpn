@@ -5,7 +5,13 @@ from fpn.utils.compute_iou import compute_iou
 
 
 class YOLOMetric(Metric):
-    def __init__(self):
+    def __init__(self, name: str):
+        """Initializes the YOLOMetric class.
+
+        Args:
+            name (str): name of the metric
+        """
+        super().__init__(name)
         self.CLASS_INDEX = 4
         self.CONF_INDEX = 5
 
@@ -101,52 +107,52 @@ class YOLOMetric(Metric):
 
 
 class YOLOAccuracyMetric(YOLOMetric):
+    def __init__(self):
+        super().__init__("YOLO Accuracy")
+
     def compute_value(self, pred: list[np.ndarray], gt: list[np.ndarray]) -> float:
         accuracy, _, _, _, _ = super().compute_values(pred, gt)
 
         return accuracy
-
-    def get_name(self) -> str:
-        return "YOLO Accuracy"
 
     def is_larger_better(self) -> bool:
         return True
 
 
 class YOLOLocalizationMetric(YOLOMetric):
+    def __init__(self):
+        super().__init__("YOLO Localization")
+
     def compute_value(self, pred: list[np.ndarray], gt: list[np.ndarray]) -> float:
         (_, localization, _, _, _) = super().compute_values(pred, gt)
 
         return localization
-
-    def get_name(self) -> str:
-        return "YOLO Localization"
 
     def is_larger_better(self) -> bool:
         return False
 
 
 class YOLOOtherMetric(YOLOMetric):
+    def __init__(self):
+        super().__init__("YOLO Other")
+
     def compute_value(self, pred: list[np.ndarray], gt: list[np.ndarray]) -> float:
         (_, _, other, _, _) = super().compute_values(pred, gt)
 
         return other
-
-    def get_name(self) -> str:
-        return "YOLO Other"
 
     def is_larger_better(self) -> bool:
         return False
 
 
 class YOLOBackgroundMetric(YOLOMetric):
+    def __init__(self):
+        super().__init__("YOLO Background")
+
     def compute_value(self, pred: list[np.ndarray], gt: list[np.ndarray]) -> float:
         (_, _, _, background, _) = super().compute_values(pred, gt)
 
         return background
-
-    def get_name(self) -> str:
-        return "YOLO Background"
 
     def is_larger_better(self) -> bool:
         return False
