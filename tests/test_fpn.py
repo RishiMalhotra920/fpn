@@ -8,8 +8,7 @@ def test_fpn_outputs(image_224_by_224):
 
     M = 200
 
-    assert len(fpn_output) == 4
-    assert fpn_output[0].shape == (1, 256, M, M)
-    assert fpn_output[1].shape == (1, 256, M / 2, M / 2)
-    assert fpn_output[2].shape == (1, 256, M / 4, M / 4)
-    assert fpn_output[3].shape == (1, 256, M / 8, M / 8)
+    assert len(fpn_output) == 3
+    assert fpn_output[0].shape == (1, 256, M / 4, M / 4)
+    assert fpn_output[2].shape == (1, 256, M / 8, M / 8)
+    assert fpn_output[3].shape == (1, 256, M / 16, M / 16)
