@@ -1,37 +1,25 @@
 import numpy as np
 
-from fpn.evaluation.metrics.metric import Metric
 from fpn.utils.compute_iou import compute_iou
 
 
-class YOLOMetric(Metric):
-    def __init__(self, name: str):
-        """Initializes the YOLOMetric class.
-
-        Args:
-            name (str): name of the metric
-        """
-        super().__init__(name)
+class YOLOMetrics:
+    def __init__(self):
         self.CLASS_INDEX = 4
         self.CONF_INDEX = 5
 
-    def compute_values(self, pred: list[np.ndarray], gt: list[np.ndarray]) -> tuple[float, float, float, float, float]:
-        """Computes YOLO percent correctness according to the YOLOv1 paper.
-
-        Args:
-            pred (list[list[[np.ndarray]]):
-                pred (list) - list of images
-                pred[i] (np.ndarray) - an image - a 2d np array of bounding boxes.
-                    Shape nx6 where n is the number of bounding boxes in the image and 6 is the number of values in the bounding box: x1, y1, x2, y2, confidence, class of the bounding box
-            gt (list[np.ndarray]) with shape list[nx6]: Same as above but for ground truth
-            classes (list[int]): list of classes
-
-        Returns:
-            float: percent correctness
-        """
+    def compute_values(
+        self, fast_rcnn_cls_pred: np.ndarray, fast_rcnn_bboxes_pred: np.ndarray, fast_rcnn_cls_gt: np.ndarray, fast_rcnn_bboxes_gt: np.ndarray
+    ) -> dict:
+        """Computes YOLO percent correctness according to the YOLOv1 paper."""
 
         total_correct, total_localization, total_other, total_background, total_pred_bboxes = 0, 0, 0, 0, 0
 
+        # EFF: not efficient but works
+        pred = np.concatenate((fast_rcnn_cls_pred, fast_rcnn_bboxes_pred), axis=1)
+        gt = np.concatenate((fast_rcnn_cls_gt, fast_rcnn_bboxes_gt), axis=1)
+
+        # EFF: not efficient to for loop over images but works...
         for image_idx in range(len(pred)):
             pred_image = pred[image_idx]
             gt_image = gt[image_idx]
@@ -41,8 +29,8 @@ class YOLOMetric(Metric):
                 continue
             else:
                 print("trace 0")
-                correct, localization, other, background, total_pred_bboxes_in_image = (
-                    self._get_yolo_metrics_from_boxes_in_image(pred_image, gt_image)
+                correct, localization, other, background, total_pred_bboxes_in_image = self._get_yolo_metrics_from_boxes_in_image(
+                    pred_image, gt_image
                 )
                 print("correct are", correct)
                 total_correct += correct
@@ -51,17 +39,15 @@ class YOLOMetric(Metric):
                 total_background += background
                 total_pred_bboxes += total_pred_bboxes_in_image
 
-        return (
-            total_correct / total_pred_bboxes,
-            total_localization / total_pred_bboxes,
-            total_other / total_pred_bboxes,
-            total_background / total_pred_bboxes,
-            total_pred_bboxes,
-        )
+        return {
+            "num_correct": total_correct,
+            "num_incorrect_localization": total_localization,
+            "num_incorrect_other": total_other,
+            "num_incorrect_background": total_background,
+            "num_objects": total_pred_bboxes,
+        }
 
-    def _get_yolo_metrics_from_boxes_in_image(
-        self, pred_image: np.ndarray, gt_image: np.ndarray
-    ) -> tuple[int, int, int, int, int]:
+    def _get_yolo_metrics_from_boxes_in_image(self, pred_image: np.ndarray, gt_image: np.ndarray) -> tuple[int, int, int, int, int]:
         """"""
 
         order = np.argsort(pred_image[:, self.CONF_INDEX])[::-1]
@@ -104,55 +90,3 @@ class YOLOMetric(Metric):
         print("this is localization", localization)
 
         return correct, localization, other, background, pred_boxes_in_image
-
-
-class YOLOAccuracyMetric(YOLOMetric):
-    def __init__(self):
-        super().__init__("YOLO Accuracy")
-
-    def compute_value(self, pred: list[np.ndarray], gt: list[np.ndarray]) -> float:
-        accuracy, _, _, _, _ = super().compute_values(pred, gt)
-
-        return accuracy
-
-    def is_larger_better(self) -> bool:
-        return True
-
-
-class YOLOLocalizationMetric(YOLOMetric):
-    def __init__(self):
-        super().__init__("YOLO Localization")
-
-    def compute_value(self, pred: list[np.ndarray], gt: list[np.ndarray]) -> float:
-        (_, localization, _, _, _) = super().compute_values(pred, gt)
-
-        return localization
-
-    def is_larger_better(self) -> bool:
-        return False
-
-
-class YOLOOtherMetric(YOLOMetric):
-    def __init__(self):
-        super().__init__("YOLO Other")
-
-    def compute_value(self, pred: list[np.ndarray], gt: list[np.ndarray]) -> float:
-        (_, _, other, _, _) = super().compute_values(pred, gt)
-
-        return other
-
-    def is_larger_better(self) -> bool:
-        return False
-
-
-class YOLOBackgroundMetric(YOLOMetric):
-    def __init__(self):
-        super().__init__("YOLO Background")
-
-    def compute_value(self, pred: list[np.ndarray], gt: list[np.ndarray]) -> float:
-        (_, _, _, background, _) = super().compute_values(pred, gt)
-
-        return background
-
-    def is_larger_better(self) -> bool:
-        return False

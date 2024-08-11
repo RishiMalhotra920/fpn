@@ -31,41 +31,46 @@ class BatchBoundingBoxes:
         Args:
             anchor_sizes: torch.tensor(3)
             anchor_ratios: torch.tensor(3)
-            offset_volume: torch.tensor(b, s, s, 9, 4): volume coming out of the RPN
+            offset_volume: torch.tensor(b, s*s*9, 4): volume coming out of the RPN
             image_size: tuple[int, int]: w, h
         """
 
-        b = offset_volume.shape[0]
-        s = offset_volume.shape[1]
+        # b = offset_volume.shape[0]
+        d2 = offset_volume.shape[1]
+        s = (d2 // 9) ** 0.5
 
-        x_scaling_ratio = image_size[0] // s
-        y_scaling_ratio = image_size[1] // s
+        feature_map_x_step = image_size[0] // s
+        feature_map_y_step = image_size[1] // s
 
         # grid containing x offsets
-        anchor_widths = anchor_sizes.unsqueeze(0).expand(3, 3).reshape(-1)
-        anchor_heights = anchor_sizes.unsqueeze(1).expand(3, 3).reshape(-1)
-        ratios = anchor_ratios.repeat(3)
-        anchor_widths = anchor_widths * ratios
-        anchor_heights = anchor_heights * ratios
+        anchors = torch.cartesian_prod(anchor_sizes, anchor_sizes)
+        anchor_widths_unique = anchors[:, 0] * anchor_ratios  # (9, )
+        anchor_heights_unique = anchors[:, 1] * (1 / anchor_ratios)  # (9, )
 
-        anchor_widths = torch.arange(9)  # (9) #TODO
-        anchor_heights = torch.arange(9)  # (9) #TODO
+        feature_map_grid_x_offsets_unique = torch.arange(0, image_size[0], feature_map_x_step)
+        feature_map_grid_y_offsets_unique = torch.arange(0, image_size[1], feature_map_y_step)
 
-        # the data changes over the minus one dim. that dim doesn't change. copy along all other dims.
-        # will be more memory efficient with expand
-        feature_map_grid_x_offsets = torch.arange(s).view(1, 1, -1, 1).expand(b, s, s, 1).repeat(1, 1, 1, 9) * x_scaling_ratio
-        feature_map_grid_y_offsets = torch.arange(s).view(1, -1, 1, 1).expand(b, s, s, 1).repeat(1, 1, 1, 9) * y_scaling_ratio
+        # create a cartesian product of all the unique values.
+        # we do this because there are s*s*9 anchor boxes at s*s locations.
+        # so to translate these offsets, we need to create a cartesian product of all the unique values and say
+        # - bbox # 34 is at x_offset x, y_offset y, anchor_width w, anchor_height h
+        cartesian_product = torch.cartesian_prod(
+            feature_map_grid_x_offsets_unique, feature_map_grid_y_offsets_unique, anchor_widths_unique, anchor_heights_unique
+        )
 
-        new_bbox_volume = torch.zeros_like(offset_volume)
+        feature_map_grid_x_offsets = cartesian_product[:, 0]  # (s*s*9,)
+        feature_map_grid_y_offsets = cartesian_product[:, 1]  # (s*s*9,)
+        anchor_widths = cartesian_product[:, 2]  # (s*s*9,)
+        anchor_heights = cartesian_product[:, 3]  # (s*s*9,)
 
-        new_bbox_volume[:, :, :, :, 0] = offset_volume[:, :, :, :, 0] * anchor_widths + feature_map_grid_x_offsets  # x
-        new_bbox_volume[:, :, :, :, 1] = offset_volume[:, :, :, :, 1] * anchor_heights + feature_map_grid_y_offsets  # y
-        new_bbox_volume[:, :, :, :, 2] = new_bbox_volume[:, :, :, :, 0] + torch.exp(offset_volume[:, :, :, :, 2]) * anchor_widths  # x2=x1 + w
-        new_bbox_volume[:, :, :, :, 3] = new_bbox_volume[:, :, :, :, 1] + torch.exp(offset_volume[:, :, :, :, 3]) * anchor_heights  # y2=y1 + h
+        new_bbox_volume = torch.zeros_like(offset_volume)  # (b, s*s*9, 4)
 
-        bboxes = offset_volume.reshape(b, s * s * 9, 4)
+        new_bbox_volume[:, :, 0] = offset_volume[:, :, 0] * anchor_widths + feature_map_grid_x_offsets  # x
+        new_bbox_volume[:, :, 1] = offset_volume[:, :, 1] * anchor_heights + feature_map_grid_y_offsets  # y
+        new_bbox_volume[:, :, 2] = new_bbox_volume[:, :, 0] + torch.exp(offset_volume[:, :, 2]) * anchor_widths  # x2=x1 + w
+        new_bbox_volume[:, :, 3] = new_bbox_volume[:, :, 1] + torch.exp(offset_volume[:, :, 3]) * anchor_heights  # y2=y1 + h
 
-        return cls(bboxes)
+        return cls(new_bbox_volume)
 
     @classmethod
     def from_bounding_boxes_and_offsets(cls, batch_bboxes: BatchBoundingBoxes, offsets: torch.Tensor) -> BatchBoundingBoxes:
@@ -89,20 +94,3 @@ class BatchBoundingBoxes:
         new_boxes[:, :, 3] = new_boxes[:, :, 1] + prev_boxes_height * torch.exp(offsets[:, :, 3])  # y2 = y1 + h
 
         return cls(new_boxes)
-
-    @staticmethod
-    def pick_top_k_boxes_per_image(
-        objectness: torch.Tensor, bboxes: BatchBoundingBoxes, k: int, pos_to_neg_ratio: float, pos_iou: float, neg_iou: float
-    ) -> BatchBoundingBoxes:
-        """Pick the top boxes per batch.
-
-        Args:
-            objectness (torch.Tensor): objectness scores of the boxes of shape (b,)
-            num_bboxes (int): number of boxes to pick
-            pos_to_neg_ratio (float): ratio of positive to negative boxes
-        """
-
-        # self._bboxes =
-        self._bboxes.sort
-
-        raise NotImplementedError

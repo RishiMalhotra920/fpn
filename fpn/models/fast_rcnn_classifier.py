@@ -42,8 +42,8 @@ class FastRCNNClassifier(nn.Module):
             tuple[torch.Tensor, torch.Tensor]: softmax scores and bounding box regression offsets
         """
         assert x.shape[1] == 256, f"Expected 256 channels, got {x.shape[1]} channels"
-        roi_boxes = rois.bboxes
-        x = self.roi_align(x, rois)  # (b, num_rois, 256, 7, 7)
+        roi_bboxes = rois.bboxes
+        x = self.roi_align(x, roi_bboxes)  # (b, num_rois, 256, 7, 7)
         x = self.bn_after_roi_pool(x)  # (b, num_rois, 256, 7, 7)
         x = x.view(x.size(0), -1)  # (b, num_rois, 256*7*7)
         x = F.relu(self.bn1(self.fc1(x)))  # (b, num_rois, 1024)

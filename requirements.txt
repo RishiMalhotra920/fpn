@@ -1,0 +1,10 @@
+torch
+torchaudio
+torchinfo
+numpy
+matplotlib
+tqdm
+aiohttp
+typer
+# have done some funky run cloning stuff
+neptune==1.10.4

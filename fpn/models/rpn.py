@@ -28,10 +28,7 @@ class RPN(nn.Module):
         x = F.relu(self.conv1(x))
         cls = self.cls_layer(x)
         bbox = self.bbox_pred(x)
-        s = cls.shape[2]
-        return cls, bbox.view(
-            x.shape[0], s, s, self.num_anchor_scales * self.num_anchor_ratios, 4
-        )  # (b, s, s, num_anchor_scales * num_anchor_ratios), (b, s, s, num_anchor_scales * num_anchor_ratios, 4)
+        return cls, bbox  # (b, s*s*9), (b, s*s*9, 4)
 
 
 # TODO: create_anchors to translate the anchor boxes from image space to feature map space.

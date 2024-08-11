@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torchvision import tv_tensors
@@ -17,7 +16,7 @@ class CustomVOCDetectionDataset(VOCDetection):
         super().__init__(root, year="2012", image_set=image_set, transform=None, target_transform=None)
         self.transform = transform
 
-    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, dict]:
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """get the item at the index
 
         Args:
@@ -26,7 +25,8 @@ class CustomVOCDetectionDataset(VOCDetection):
         Returns:
             tuple[torch.Tensor, torch.Tensor, dict]: returns the image, label and metadata
                 Image: torch.Tensor of shape (3, H, W)
-                Label: torch.Tensor of shape (num_bboxes, 6) where 6 is [x1, y1, x2, y2, confidence class]
+                Cls: torch.Tensor of shape (num_bboxes) where each element is the class index
+                Boxes: torch.Tensor of shape (num_bboxes, 4) where 4 is [x1, y1, x2, y2]
                 Metadata: dict containing metadata: image_id, image_width, image_height, image_path
         """
         image, annotation = super().__getitem__(index)
@@ -44,48 +44,28 @@ class CustomVOCDetectionDataset(VOCDetection):
             "image_path": annotation["annotation"]["filename"],
         }
 
-        boxes = []
+        boxes_list = []
 
-        labels = []
+        cls_list = []
         for object in objects:
             # normalize the bounding box coordinates
             x_min, x_max = int(object["bndbox"]["xmin"]), int(object["bndbox"]["xmax"])
             y_min, y_max = int(object["bndbox"]["ymin"]), int(object["bndbox"]["ymax"])
 
-            boxes.append([x_min, y_min, x_max, y_max])
-            labels.append(VOC_class_to_index[object["name"]])
+            boxes_list.append([x_min, y_min, x_max, y_max])
+            cls_list.append(VOC_class_to_index[object["name"]])
 
-        #  missing type annotations here.
-        boxes = tv_tensors.BoundingBoxes(data=boxes, format="XYXY", canvas_size=(image_height, image_width))  # type: ignore
+        boxes = tv_tensors.BoundingBoxes(data=boxes_list, format="XYXY", canvas_size=(image_height, image_width))  # type: ignore
 
-        out_image, label = self.transform(image, boxes)
+        out_image, boxes = self.transform(image, boxes)
 
-        label = torch.cat([label.tensor, torch.tensor([1.0]), torch.tensor(labels).unsqueeze(1)], dim=1)
+        cls = torch.tensor(cls_list)
 
-        return out_image, label, metadata
+        return out_image, cls, boxes, metadata  # type: ignore
 
     def get_dataloader(self, batch_size: int, num_workers: int, shuffle: bool) -> DataLoader:
         """Gets the dataloader for the dataset"""
         return DataLoader(self, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle)
-
-    @property
-    def labels(self) -> list[np.ndarray]:
-        """Return the labels of the dataset.
-
-        Returns:
-            list[np.ndarray]: ret[i] represents the bounding boxes in image i.
-                Shape of ret[i]: nx6 where n is the number of bounding boxes in image i
-        """
-        _labels = []
-        for i in range(len(self)):
-            _, label, _ = self[i]
-            _labels.append(label.numpy())
-
-        return _labels
-
-    @property
-    def features(self):
-        pass
 
 
 VOC_CLASSES = [
@@ -109,7 +89,9 @@ VOC_CLASSES = [
     "sofa",
     "train",
     "tvmonitor",
+    "background",
 ]
+BACKGROUND_CLASS_INDEX = VOC_CLASSES.index("background")
 
 VOC_class_to_index = {cls_name: idx for idx, cls_name in enumerate(VOC_CLASSES)}
 VOC_index_to_class = {idx: cls_name for idx, cls_name in enumerate(VOC_CLASSES)}
