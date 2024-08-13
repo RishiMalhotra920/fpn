@@ -22,13 +22,22 @@ class RPN(nn.Module):
         self.num_anchor_ratios = num_anchor_ratios
         self.conv1 = nn.Conv2d(in_channels, 512, kernel_size=3, padding=1)
         self.cls_layer = nn.Conv2d(512, num_anchor_scales * num_anchor_ratios, kernel_size=1)
-        self.bbox_pred = nn.Conv2d(512, num_anchor_scales * num_anchor_ratios * 4, kernel_size=1)
+        self.bbox_layer = nn.Conv2d(512, num_anchor_scales * num_anchor_ratios * 4, kernel_size=1)
 
     def forward(self, x: torch.Tensor):
+        """forward pass on rpn
+
+        Args:
+            x (torch.Tensor): (b, f, h, w)
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: cls, bbox of shapes (b, f*s*s*9), (b, f*s*s*9, 4)
+        """
+        b = x.shape[0]
         x = F.relu(self.conv1(x))
-        cls = self.cls_layer(x)
-        bbox = self.bbox_pred(x)
-        return cls, bbox  # (b, s*s*9), (b, s*s*9, 4)
+        cls = self.cls_layer(x).reshape(b, -1)
+        bbox = self.bbox_layer(x).reshape(b, -1, 4)
+        return cls, bbox  # (b, f*s*s*9), (b, f*s*s*9, 4)
 
 
 # TODO: create_anchors to translate the anchor boxes from image space to feature map space.

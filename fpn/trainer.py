@@ -55,6 +55,9 @@ class Trainer:
         self.device = device
         self.metric = metric
 
+    def __repr__(self) -> str:
+        return f"Trainer(model={self.model}, train_dataloader={self.train_dataloader}, val_dataloader={self.val_dataloader}, lr_scheduler={self.lr_scheduler}, optimizer={self.optimizer}, loss_fn={self.loss_fn}, metric={self.metric}, epoch_start={self.epoch_start}, epoch_end={self.epoch_end}, run_manager={self.run_manager}, checkpoint_interval={self.checkpoint_interval}, log_interval={self.log_interval}, device={self.device})"
+
     def train_step(self, epoch: int) -> None:
         self.model.train()
 
@@ -95,6 +98,7 @@ class Trainer:
             loss_dict = self.loss_fn(
                 objectness_pred,
                 rpn_bboxes_pred,
+                # RPN_BBOX_ANCHOR.expand_as(rpn_bboxes_pred),
                 foreground_objectness_pred,
                 foreground_bboxes_pred,
                 fast_rcnn_cls_pred,

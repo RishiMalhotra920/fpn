@@ -49,8 +49,9 @@ class RPNLoss(nn.Module):
 
 
 class FastRCNNLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, background_class_index):
         super().__init__()
+        self.background_class_index = background_class_index
 
     def forward(
         self,
@@ -73,8 +74,12 @@ class FastRCNNLoss(nn.Module):
         Returns:
             torch.Tensor: FastRCNN loss
         """
+
         cls_loss = F.cross_entropy(cls_pred, cls_label, reduction="mean")
-        bbox_loss = F.smooth_l1_loss(bbox_pred, bbox_label, reduction="sum")
+
+        filtered_bbox_pred = bbox_pred[cls_label != self.background_class_index]  # (b, num_gt_cls, 4)
+        filtered_bbox_gt = bbox_label[cls_label != self.background_class_index]  # (b, num_gt_cls, 4)
+        bbox_loss = F.smooth_l1_loss(filtered_bbox_pred, filtered_bbox_gt, reduction="sum")
 
         return {
             "fast_rcnn_cls_loss": lambda_fast_rcnn_cls * cls_loss,
@@ -87,12 +92,14 @@ class FasterRCNNLoss(nn.Module):
     def __init__(self, background_class_idx):
         super().__init__()
         self.background_class_idx = background_class_idx
+        self.rpn_loss = RPNLoss()
+        self.fast_rcnn_loss = FastRCNNLoss(background_class_idx)
 
     def forward(
         self,
         rpn_objectness_pred: torch.Tensor,
         rpn_bbox_pred: torch.Tensor,
-        rpn_bbox_anchors: torch.Tensor,
+        # rpn_bbox_anchors: torch.Tensor,
         fast_rcnn_cls_pred: torch.Tensor,
         fast_rcnn_bbox_pred: torch.Tensor,
         gt_cls: torch.Tensor,
@@ -123,8 +130,11 @@ class FasterRCNNLoss(nn.Module):
             torch.Tensor: FasterRCNN loss
         """
 
+        # you should match rpn_bbox_anchors with gt_bboxes early on for more training stability.
+        # however, in an effort to simplify this pipeline, i'll match rpn_bbox_pred with gt_bboxes for now.
+        # EFF: if the training is unstable, i'll match rpn_bbox_anchors with gt_bboxes.
         is_foreground, anchor_matches = self.match_based_on_iou(
-            rpn_bbox_anchors, gt_bboxes, match_iou_threshold
+            rpn_bbox_pred, gt_bboxes, match_iou_threshold
         )  # (b, nBB*1/pos_to_neg_ratio), (b, nBB*1/pos_to_neg_ratio)
 
         row_indices = torch.arange(gt_cls.shape[0]).unsqueeze(1).expand_as(gt_cls)
@@ -146,8 +156,8 @@ class FasterRCNNLoss(nn.Module):
         ]  # (b, nBB)
         fast_rcnn_bboxes_gt = gt_bboxes[row_indices, fast_rcnn_classifier_matches]  # (b, nBB, 4)
 
-        rpn_loss_dict = RPNLoss()(rpn_objectness_pred, rpn_bbox_pred, rpn_objectness_gt, rpn_bboxes_gt, lambda_rpn_objectness, lambda_rpn_bbox)
-        fast_rcnn_loss_dict = FastRCNNLoss()(
+        rpn_loss_dict = self.rpn_loss(rpn_objectness_pred, rpn_bbox_pred, rpn_objectness_gt, rpn_bboxes_gt, lambda_rpn_objectness, lambda_rpn_bbox)
+        fast_rcnn_loss_dict = self.fast_rcnn_loss(
             fast_rcnn_cls_pred, fast_rcnn_bbox_pred, fast_rcnn_cls_gt, fast_rcnn_bboxes_gt, lambda_fast_rcnn_cls, lambda_fast_rcnn_bbox
         )
 

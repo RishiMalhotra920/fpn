@@ -8,16 +8,18 @@ import typer
 import yaml
 from torchvision.transforms import v2 as transforms_v2
 
-from fpn.models.faster_rcnn_with_fpn import FasterRCNNWithFPN
-
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))  # noqa: E402
+
 from fpn.checkpoint_loader import load_checkpoint
 from fpn.data import BACKGROUND_CLASS_INDEX, CustomVOCDetectionDataset
 from fpn.loss import FasterRCNNLoss
 from fpn.lr_scheduler import get_custom_lr_scheduler, get_fixed_lr_scheduler
+from fpn.models import FasterRCNNWithFPN
 from fpn.run_manager import RunManager
 from fpn.trainer import Trainer
 from fpn.YOLO_metrics import YOLOMetrics
+
+# from typing_extensions
 
 config = yaml.safe_load(open("config.yaml"))
 
@@ -30,7 +32,15 @@ config = yaml.safe_load(open("config.yaml"))
 
 # python train.py --num_epochs 100 --batch_size 1024 --hidden_units 256 --learning_rate 0.005 --run_name image_net_train_deeper_network_and_dropout --device cuda
 
-app = typer.Typer(name="Object Detection with FPN and Faster RCNN", help="Train an object detection model", epilog="Enjoy the program :)")
+app = typer.Typer(
+    name="Object Detection with FPN and Faster RCNN",
+    help="Train an object detection model",
+    epilog="Enjoy the program :)",
+    pretty_exceptions_show_locals=False,
+)
+
+
+# python train.py --num-epochs 2 --batch-size 2 --lr-scheduler-name fixed --lr 0.001 --dropout 0.9 --run-name new-run --checkpoint-interval 5
 
 
 @app.command()
@@ -52,8 +62,13 @@ def main(
     train_dir: Path = typer.Option(Path(config["image_net_data_dir"]) / "train", help="Directory containing training data"),
     val_dir: Path = typer.Option(Path(config["image_net_data_dir"]) / "val", help="Directory containing validation data"),
 ):
+    """
+    --lr_scheduler
+    """
+
     # Args validation
     if lr_scheduler_name not in ["custom", "fixed"]:
+        print(lr_scheduler_name, "here")
         typer.echo("Error: Invalid lr_scheduler", err=True)
         raise typer.Exit(code=1)
 
@@ -75,7 +90,8 @@ def main(
                 # translate x, y by up to 0.1ximage_width, 0.1ximage_height, scale by 1.0-1.2ximage_dim, rotate by -30 to 30 degrees
                 transforms_v2.RandomAffine(degrees=(0, 30), translate=(0.1, 0.1), scale=(1.0, 1.2), shear=0),
                 transforms_v2.ColorJitter(brightness=0.5, contrast=0.5),
-                transforms_v2.ToTensor(),
+                transforms_v2.ToImage(),  # convert to PIL image 0..255
+                transforms_v2.ToDtype(torch.float, scale=True),  # convert to float32 and scale to 0..1
                 transforms_v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 # transforms.RandomErasing()
             ]
@@ -94,16 +110,18 @@ def main(
         # make it so that we minimize the sum of all the losses in the fpn!!
         faster_rcnn_with_fpn_model = FasterRCNNWithFPN((image_dim, image_dim), nms_threshold)
 
-        run_manager = RunManager(
-            new_run_name=run_name,
-            source_files=[
-                "../src/lr_schedulers/*.py",
-                "../src/models/*.py",
-                "../src/trainers/*.py",
-                "train_yolo.py",
-                "../src/loss_functions/yolo_loss_function.py",
-            ],
-        )
+        run_manager = RunManager()  # empty run for testing!
+
+        # run_manager = RunManager(
+        #     new_run_name=run_name,
+        #     source_files=[
+        #         "../fpn/lr_scheduler.py",
+        #         "../fpn/models/*.py",
+        #         "../fpn/trainer.py",
+        #         "train.py",
+        #         "../fpn/loss/*.py",
+        #     ],
+        # )
 
         # switch to DistributedDataParallel if you have the heart for it!
         model = torch.nn.DataParallel(faster_rcnn_with_fpn_model)
@@ -182,4 +200,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    app()

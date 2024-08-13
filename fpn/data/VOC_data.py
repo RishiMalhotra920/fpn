@@ -15,6 +15,7 @@ class CustomVOCDetectionDataset(VOCDetection):
         assert image_set in ["train", "val"]
         super().__init__(root, year="2012", image_set=image_set, transform=None, target_transform=None)
         self.transform = transform
+        self.max_num_bboxes = 20
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """get the item at the index
@@ -55,13 +56,19 @@ class CustomVOCDetectionDataset(VOCDetection):
             boxes_list.append([x_min, y_min, x_max, y_max])
             cls_list.append(VOC_class_to_index[object["name"]])
 
-        boxes = tv_tensors.BoundingBoxes(data=boxes_list, format="XYXY", canvas_size=(image_height, image_width))  # type: ignore
+        tv_bboxes = tv_tensors.BoundingBoxes(data=boxes_list, format="XYXY", canvas_size=(image_height, image_width))  # type: ignore
 
-        out_image, boxes = self.transform(image, boxes)
+        out_image, bboxes = self.transform(image, tv_bboxes)
 
         cls = torch.tensor(cls_list)
 
-        return out_image, cls, boxes, metadata  # type: ignore
+        padded_bboxes = torch.zeros((self.max_num_bboxes, 4))
+        padded_cls = torch.zeros(self.max_num_bboxes, dtype=torch.long)
+        num_bboxes = bboxes.shape[0]
+        padded_cls[:num_bboxes] = cls
+        padded_bboxes[:num_bboxes] = bboxes
+
+        return out_image, padded_cls, padded_bboxes, metadata  # type: ignore
 
     def get_dataloader(self, batch_size: int, num_workers: int, shuffle: bool) -> DataLoader:
         """Gets the dataloader for the dataset"""

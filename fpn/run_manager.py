@@ -33,21 +33,26 @@ class RunManager:
         tags: list[str] = [],
         source_files: list[str] = [],
     ):
-        assert new_run_name is not None, "new_run_name should not be None"
+        # assert new_run_name is not None, "new_run_name should not be None"
 
-        base_path = os.getcwd()
-        assert_filepaths_exist(base_path, source_files)
+        if new_run_name is not None:
+            base_path = os.getcwd()
+            assert_filepaths_exist(base_path, source_files)
 
-        self.temp_dir = Path("temp")
-        self.temp_dir.mkdir(exist_ok=True)
+            self.temp_dir = Path("temp")
+            self.temp_dir.mkdir(exist_ok=True)
 
-        self.run = neptune.init_run(
-            project="towards-hi/image-classification",
-            api_token=config["neptune_api_token"],
-            name=new_run_name,
-            source_files=source_files,
-            tags=tags,
-        )
+            self.run = neptune.init_run(
+                project="towards-hi/image-classification",
+                api_token=config["neptune_api_token"],
+                name=new_run_name,
+                source_files=source_files,
+                tags=tags,
+            )
+        else:
+            self.run = None
+
+        # if new run is none, don't do anything - for testing purposes!
 
     def add_tags(self, tags: list[str]) -> None:
         """
@@ -59,6 +64,9 @@ class RunManager:
         Example:
           tags = ["resnet", "cifar10"]
         """
+        if self.run is None:
+            return
+
         self.run["sys/tags"].add(tags)
 
     def set_checkpoint_to_continue_from(self, checkpoint_to_continue_from_signature: str) -> None:
@@ -68,6 +76,9 @@ class RunManager:
         Args:
           checkpoint_to_continue_from_signature: a string in the format RunId:CheckpointPath
         """
+        if self.run is None:
+            return
+
         self.log_data({"checkpoint_to_continue_from_signature": checkpoint_to_continue_from_signature})
 
     def log_data(self, data: Dict[str, Any]) -> None:
@@ -88,6 +99,9 @@ class RunManager:
             "device": "cuda"
           }
         """
+        if self.run is None:
+            return
+
         for key in data:
             self.run[key] = data[key]
 
@@ -106,6 +120,8 @@ class RunManager:
           you can use wildcards to upload all files in a directory
           or directory names!
         """
+        if self.run is None:
+            return
 
         for fileset_name in fileset_map:
             self.run[fileset_name].upload_files(fileset_map[fileset_name])
@@ -122,6 +138,9 @@ class RunManager:
             "model/code": "model_builder.py"
           }
         """
+        if self.run is None:
+            return
+
         for key in files:
             self.run[key].upload(files[key])
 
@@ -142,12 +161,17 @@ class RunManager:
             "val/accuracy": 0.9
           }
         """
+        if self.run is None:
+            return
 
         for metric_name in metrics:
             self.run[metric_name].append(metrics[metric_name], step=epoch)
             # print(f"\nEpoch: {epoch}, {metric_name}: {metrics[metric_name]}")
 
     def end_run(self):
+        if self.run is None:
+            return
+
         self.run.stop()
         try:
             shutil.rmtree(self.temp_dir)
@@ -170,6 +194,9 @@ class RunManager:
         # later on you can implement a json file to store info about checkpoints
 
         # need this here in case temp dir is deleted between run creation and model saving
+        if self.run is None:
+            return
+
         self.temp_dir.mkdir(exist_ok=True)
         model_save_path = self.temp_dir / f"{epoch}.pth"
         print(f"[INFO] Saving model to {model_save_path}")

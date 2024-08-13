@@ -1,5 +1,5 @@
-from .faster_rcnn_fpn import FasterRCNN_FPN
+from .faster_rcnn_with_fpn import FasterRCNNWithFPN
 from .fpn import FPN
 from .rpn import RPN
 
-__all__ = ["FasterRCNN_FPN", "FPN", "RPN", "FasterRCNN"]
+__all__ = ["FasterRCNNWithFPN", "FPN", "RPN"]

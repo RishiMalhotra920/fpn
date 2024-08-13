@@ -1,3 +1,5 @@
+import reprlib
+
 import numpy as np
 import torch
 import torchvision
@@ -22,9 +24,9 @@ class FasterRCNNWithFPN(nn.Module):
     ):
         super().__init__()
         self.backbone = FPN()
-        self.fpn_map_small_anchor_scales = torch.tensor([32, 64, 128])
-        self.fpn_map_medium_anchor_scales = torch.tensor([64, 128, 256])
-        self.fpn_map_large_anchor_scales = torch.tensor([128, 256, 512])
+        self.fpn_map_small_anchor_scales = torch.tensor([32.0, 64.0, 128.0])
+        self.fpn_map_medium_anchor_scales = torch.tensor([64.0, 128.0, 256.0])
+        self.fpn_map_large_anchor_scales = torch.tensor([128.0, 256.0, 512.0])
         anchor_ratios = torch.tensor([0.5, 1, 2])
         self.all_anchor_scales = [
             self.fpn_map_small_anchor_scales,
@@ -35,7 +37,7 @@ class FasterRCNNWithFPN(nn.Module):
 
         self.rpn = RPN(
             in_channels=256,
-            num_anchor_scales=len(self.fpn_map_small_anchor_scales),
+            num_anchor_scales=len(self.fpn_map_large_anchor_scales),
             num_anchor_ratios=len(anchor_ratios),
         )
         self.fast_rcnn_classifier = FastRCNNClassifier(num_classes=3)
@@ -46,6 +48,14 @@ class FasterRCNNWithFPN(nn.Module):
         self.rpn_pos_to_neg_ratio = rpn_pos_to_neg_ratio
         self.rpn_pos_iou = rpn_pos_iou
         self.rpn_neg_iou = rpn_neg_iou
+
+    def __repr__(self):
+        r = reprlib.Repr()
+        r.maxlevel = 2  # Set the maximum depth
+        r.maxstring = 100  # Optionally, set maximum string length
+        r.maxother = 100  # Optionally, set maximum length for other objects
+
+        return r.repr(self)
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, BatchBoundingBoxes, torch.Tensor, BatchBoundingBoxes, torch.Tensor, BatchBoundingBoxes]:
         """Forward pass of the model.
@@ -65,18 +75,22 @@ class FasterRCNNWithFPN(nn.Module):
                 all_fast_rcnn_bboxes (list[torch.Tensor]): list of fast rcnn classifier bounding box regression offsets of shape (b, nBB, num_classes, 4)
         """
 
-        fpn_maps = self.backbone(x)
+        fpn_maps = self.backbone(x)  # tuple[(N, 256, M/4, M/4), (N, 256, M/8, M/8), (N, 256, M/16, M/16)]
 
         all_objectness = []
         all_bboxes = []
 
-        for fpn_map, anchor_scale, anchor_ratio in zip(
-            fpn_maps, self.all_anchor_scales, self.all_anchor_ratios
-        ):  # (B, F, H/2, W/2), then (B, F, H/4, W/4), then (B, F, H/8, W/8)
-            objectness, bbox_offset_volume = self.rpn(fpn_map)  # (b, s*s*9), (b, s*s*9, 4)
+        for fpn_map, anchor_scale, anchor_ratio in zip(fpn_maps, self.all_anchor_scales, self.all_anchor_ratios):
+            print("this fpn map shape", fpn_map.shape)
+            # f is the number of channels in the feature map, s is the size of the feature map
+            b = fpn_map.shape[0]
+            f = fpn_map.shape[1]
+            s = fpn_map.shape[2]
+            objectness, bbox_offset_volume = self.rpn(fpn_map)  # (b, f*s*s*9), (b, f*s*s*9, 4)
+            print("shape 2", bbox_offset_volume.shape)
 
             bboxes = BatchBoundingBoxes.from_anchors_and_rpn_bbox_offset_volume(
-                self.anchor_sizes, self.anchor_ratios, bbox_offset_volume, self.image_size
+                anchor_scale, anchor_ratio, bbox_offset_volume, self.image_size, b=b, f=f, s=s
             )
 
             all_objectness.append(objectness)
