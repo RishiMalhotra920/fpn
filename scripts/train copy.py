@@ -16,7 +16,6 @@ from fpn.loss import FasterRCNNLoss
 from fpn.lr_scheduler import get_custom_lr_scheduler, get_fixed_lr_scheduler
 from fpn.models import FasterRCNNWithFPN
 from fpn.run_manager import RunManager
-from fpn.trainer import Trainer
 from fpn.YOLO_metrics import YOLOMetrics
 
 # from typing_extensions
@@ -124,8 +123,7 @@ def main(
         # )
 
         # switch to DistributedDataParallel if you have the heart for it!
-        # model = torch.nn.DataParallel(faster_rcnn_with_fpn_model)
-        model = faster_rcnn_with_fpn_model
+        model = torch.nn.DataParallel(faster_rcnn_with_fpn_model)
 
         if continue_from_checkpoint_signature is not None:
             print("Loading YOLO checkpoint ...")
@@ -168,28 +166,33 @@ def main(
             "num_workers": num_workers,
             "command": " ".join(sys.argv),
         }
-        print(str(model))
-        # run_manager.log_data({"parameters": parameters, "model/summary": str(model)})
+
+        run_manager.log_data(
+            {
+                "parameters": parameters,
+                "model/summary": str(model),
+            }
+        )
 
         this_metric = YOLOMetrics()
 
-        trainer = Trainer(
-            model=model,
-            train_dataloader=train_dataloader,
-            val_dataloader=test_dataloader,
-            lr_scheduler=lr_scheduler,
-            optimizer=optimizer,
-            loss_fn=loss_fn,
-            metric=this_metric,
-            epoch_start=epoch_start,
-            epoch_end=epoch_start + num_epochs,
-            run_manager=run_manager,
-            checkpoint_interval=checkpoint_interval,
-            log_interval=log_interval,
-            device=device,
-        )
+        # trainer = Trainer(
+        #     model=model,
+        #     train_dataloader=train_dataloader,
+        #     val_dataloader=test_dataloader,
+        #     lr_scheduler=lr_scheduler,
+        #     optimizer=optimizer,
+        #     loss_fn=loss_fn,
+        #     metric=this_metric,
+        #     epoch_start=epoch_start,
+        #     epoch_end=epoch_start + num_epochs,
+        #     run_manager=run_manager,
+        #     checkpoint_interval=checkpoint_interval,
+        #     log_interval=log_interval,
+        #     device=device,
+        # )
 
-        trainer.train()
+        # trainer.train()
 
         run_manager.end_run()
     except KeyboardInterrupt:

@@ -56,6 +56,7 @@ class BatchBoundingBoxes:
         # we do this because there are s*s*9 anchor boxes at s*s locations.
         # so to translate these offsets, we need to create a cartesian product of all the unique values and say
         # - bbox # 34 is at x_offset x, y_offset y, anchor_width w, anchor_height h
+        print("shapes 3", feature_map_grid_x_offsets_unique.shape, feature_map_grid_y_offsets_unique.shape, anchor_scales.shape, anchor_ratios.shape)
         cartesian_product_with_anchor_scales_and_ratios = torch.cartesian_prod(
             feature_map_grid_x_offsets_unique, feature_map_grid_y_offsets_unique, anchor_scales, anchor_ratios
         )

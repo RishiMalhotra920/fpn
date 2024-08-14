@@ -28,16 +28,17 @@ class RPN(nn.Module):
         """forward pass on rpn
 
         Args:
-            x (torch.Tensor): (b, f, h, w)
+            x (torch.Tensor): (b, f1, h, w)
 
         Returns:
-            tuple[torch.Tensor, torch.Tensor]: cls, bbox of shapes (b, f*s*s*9), (b, f*s*s*9, 4)
+            tuple[torch.Tensor, torch.Tensor]: cls, bbox of shapes (b, s*s*9), (b, f2, s, s, 9, 4)
         """
         b = x.shape[0]
         x = F.relu(self.conv1(x))
-        cls = self.cls_layer(x).reshape(b, -1)
+        cls = self.cls_layer(x)
         bbox = self.bbox_layer(x).reshape(b, -1, 4)
-        return cls, bbox  # (b, f*s*s*9), (b, f*s*s*9, 4)
+        print("shapes", cls.shape, bbox.shape)
+        return cls, bbox
 
 
 # TODO: create_anchors to translate the anchor boxes from image space to feature map space.
