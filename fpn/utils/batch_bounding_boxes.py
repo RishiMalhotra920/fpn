@@ -82,6 +82,8 @@ class BatchBoundingBoxes:
         x_grid_cell_centers = ((torch.arange(0, s).float() * feature_map_x_step) + (feature_map_y_step / 2)).reshape(1, 1, s, 1)
 
         anchor_with_offset_positions = torch.zeros_like(offset_volume)  # (b, s, s, 3, 3, 4)
+        print('devices', anchor_with_offset_positions.device, offset_volume.device, anchor_widths.device, x_grid_cell_centers.device)
+        exit()
 
         anchor_with_offset_positions[:, :, :, :, 0] = offset_volume[:, :, :, :, 0] * anchor_widths + x_grid_cell_centers  # x = t_x * w + x
         anchor_with_offset_positions[:, :, :, :, 1] = offset_volume[:, :, :, :, 1] * anchor_heights + y_grid_cell_centers
