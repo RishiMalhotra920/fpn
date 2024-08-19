@@ -196,7 +196,7 @@ class FasterRCNN(nn.Module):
 
         list_of_bboxes_with_offsets = []
         for image_bboxes, image_bbox_offsets in zip(list_of_picked_bboxes, offsets):
-            image_bboxes_with_offsets = torch.zeros_like(image_bboxes)
+            image_bboxes_with_offsets = torch.zeros_like(image_bboxes, device=self.device)
 
             prev_bboxes_width = image_bboxes[:, 2] - image_bboxes[:, 0]
             prev_bboxes_height = image_bboxes[:, 3] - image_bboxes[:, 1]
@@ -274,7 +274,7 @@ class FasterRCNN(nn.Module):
             list_of_picked_bboxes.append(picked_all_bboxes)
             list_of_picked_bboxes_gt_matches.append(picked_all_bboxes_gt_matches)
 
-            is_foreground = torch.cat([torch.ones_like(random_pos_index), torch.zeros_like(random_neg_index)], dim=0)
+            is_foreground = torch.cat([torch.ones_like(random_pos_index, device=self.device), torch.zeros_like(random_neg_index, device=self.device)], dim=0)
             is_fast_rcnn_pred_foreground.append(is_foreground)
 
         return list_of_picked_bboxes, list_of_picked_bboxes_gt_matches, is_fast_rcnn_pred_foreground

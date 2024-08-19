@@ -108,7 +108,7 @@ def main(
 
         # Create model with help from model_builder.py
         # make it so that we minimize the sum of all the losses in the fpn!!
-        backbone = FPN(device=device)
+        backbone = FPN(device=device).to(device)
         faster_rcnn_with_fpn_model = FasterRCNN((image_dim, image_dim), nms_threshold, device=device)
 
         # run_manager = RunManager()  # empty run for testing!
@@ -143,7 +143,7 @@ def main(
         # Set loss and optimizer
         # loss_fn = torch.nn.CrossEntropyLoss()
 
-        loss_fn = FasterRCNNLoss(BACKGROUND_CLASS_INDEX)
+        loss_fn = FasterRCNNLoss(BACKGROUND_CLASS_INDEX, device)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 

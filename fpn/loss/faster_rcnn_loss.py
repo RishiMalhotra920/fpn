@@ -139,12 +139,13 @@ class FastRCNNLoss(nn.Module):
 
 
 class FasterRCNNLoss(nn.Module):
-    def __init__(self, background_class_idx):
+    def __init__(self, background_class_idx: int, device: str):
         super().__init__()
         self.background_class_idx = background_class_idx
         self.rpn_loss = RPNLoss()
         self.fast_rcnn_loss = FastRCNNLoss(background_class_idx)
         self.metric = YOLOMetrics()
+        self.device = device
 
     def __call__(
         self,
@@ -255,10 +256,11 @@ class FasterRCNNLoss(nn.Module):
         #     match_iou_threshold,
         # )  # (b, nBB), (b, nBB)
 
-        # TODO 2: what is happening in this zip function??
+        # print('devices', is_fast_rcnn_preds_foreground[0].device, list_of_picked_bboxes_gt_matches[0].device, gt_cls.device)
+        # exit()
         fast_rcnn_cls_gt = [
             (
-                (~is_image_preds_foreground & torch.full_like(is_image_preds_foreground, self.background_class_idx))
+                (~is_image_preds_foreground & torch.full_like(is_image_preds_foreground, self.background_class_idx, device=self.device))
                 + (is_image_preds_foreground & gt_cls[i, is_image_preds_foreground])
             )
             for i, (is_image_preds_foreground, image_picked_bboxes_gt_matches) in enumerate(
