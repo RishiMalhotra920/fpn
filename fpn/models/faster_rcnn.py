@@ -303,7 +303,7 @@ class FasterRCNN(nn.Module):
             # image_cls_probs: (L_i, num_classes) where L_i is the number of bounding boxes in the image
             # image_bbox_offsets_for_all_classes: (L_i, num_classes, 4)
             num_boxes = image_cls_probs.shape[0]
-            box_idx = torch.arange(num_boxes)
+            box_idx = torch.arange(num_boxes, device=self.device)
             cls = image_cls_probs.argmax(dim=1)  # (L_i)
             bbox_offsets = image_bbox_offsets_for_all_classes[box_idx, cls]  # (L_i, 4)
             assert bbox_offsets.shape == (num_boxes, 4), f"Expected (L_i, 4), got {bbox_offsets.shape}"

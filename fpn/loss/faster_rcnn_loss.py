@@ -223,7 +223,6 @@ class FasterRCNNLoss(nn.Module):
         Returns:
             torch.Tensor: FasterRCNN loss
         """
-        device = rpn_objectness_pred[0].device
 
         # for faster_rcnn_cls_pred, faster_rcnn_bbox_pred in zip(fast_rcnn_cls_pred, fast_rcnn_bbox_pred):
         # for pred in range(3):
@@ -273,7 +272,7 @@ class FasterRCNNLoss(nn.Module):
         for i in range(len(list_of_picked_bboxes_gt_matches)):
             picked_bboxes_gt_matches = list_of_picked_bboxes_gt_matches[i]
             fast_rcnn_bboxes_gt.append(gt_bboxes[i, picked_bboxes_gt_matches])
-            row_indices = torch.arange(len(fast_rcnn_cls_gt[i]))
+            row_indices = torch.arange(len(fast_rcnn_cls_gt[i]), device=self.device)
             max_class_pred_index = fast_rcnn_cls_gt[i]
             fast_rcnn_bboxes_max_class_pred.append(fast_rcnn_bbox_pred[i][row_indices, max_class_pred_index])
 
