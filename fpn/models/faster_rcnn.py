@@ -225,6 +225,7 @@ class FasterRCNN(nn.Module):
 
         If there are not enough foreground or background boxes, we repeat sample the positive or negative boxes.
 
+some change
         Args:
             objectness (torch.Tensor): objectness scores of the boxes of shape (b, s*s*9)
             batch_bounding_boxes (torch.Tensor): bounding boxes in this batch of shape (b, s*s*9, 4)
