@@ -14,7 +14,7 @@ from fpn.checkpoint_loader import load_checkpoint
 from fpn.data import BACKGROUND_CLASS_INDEX, CustomVOCDetectionDataset
 from fpn.loss import FasterRCNNLoss
 from fpn.lr_scheduler import get_custom_lr_scheduler, get_fixed_lr_scheduler
-from fpn.models import FasterRCNNWithFPN
+from fpn.models import FPN, FasterRCNN
 from fpn.run_manager import RunManager
 from fpn.trainer import Trainer
 from fpn.YOLO_metrics import YOLOMetrics
@@ -108,7 +108,8 @@ def main(
 
         # Create model with help from model_builder.py
         # make it so that we minimize the sum of all the losses in the fpn!!
-        faster_rcnn_with_fpn_model = FasterRCNNWithFPN((image_dim, image_dim), nms_threshold)
+        backbone = FPN()
+        faster_rcnn_with_fpn_model = FasterRCNN((image_dim, image_dim), nms_threshold)
 
         run_manager = RunManager()  # empty run for testing!
 
@@ -125,6 +126,7 @@ def main(
 
         # switch to DistributedDataParallel if you have the heart for it!
         # model = torch.nn.DataParallel(faster_rcnn_with_fpn_model)
+        # for speed purposes. TODO: use DataParallel
         model = faster_rcnn_with_fpn_model
 
         if continue_from_checkpoint_signature is not None:
@@ -168,25 +170,28 @@ def main(
             "num_workers": num_workers,
             "command": " ".join(sys.argv),
         }
-        print(str(model))
-        # run_manager.log_data({"parameters": parameters, "model/summary": str(model)})
 
-        this_metric = YOLOMetrics()
+        run_manager.log_data({"parameters": parameters, "model/summary": str(model)})
+
+        yolo_metric = YOLOMetrics()
 
         trainer = Trainer(
+            backbone=backbone,
             model=model,
             train_dataloader=train_dataloader,
             val_dataloader=test_dataloader,
             lr_scheduler=lr_scheduler,
             optimizer=optimizer,
             loss_fn=loss_fn,
-            metric=this_metric,
+            metric=yolo_metric,
             epoch_start=epoch_start,
             epoch_end=epoch_start + num_epochs,
             run_manager=run_manager,
             checkpoint_interval=checkpoint_interval,
             log_interval=log_interval,
             device=device,
+            image_size=(image_dim, image_dim),
+            nms_threshold=nms_threshold,
         )
 
         trainer.train()

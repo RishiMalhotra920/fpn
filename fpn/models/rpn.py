@@ -24,21 +24,22 @@ class RPN(nn.Module):
         self.cls_layer = nn.Conv2d(512, num_anchor_scales * num_anchor_ratios, kernel_size=1)
         self.bbox_layer = nn.Conv2d(512, num_anchor_scales * num_anchor_ratios * 4, kernel_size=1)
 
-    def forward(self, x: torch.Tensor):
+    def __call__(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        return super().__call__(x)
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """forward pass on rpn
 
         Args:
             x (torch.Tensor): (b, f1, h, w)
 
         Returns:
-            tuple[torch.Tensor, torch.Tensor]: cls, bbox of shapes (b, s*s*9), (b, f2, s, s, 9, 4)
+            tuple[torch.Tensor, torch.Tensor]: cls, bbox of shapes (b, s, s, 9), (b, s, s, 9, 4)
         """
+        b, _, s, _ = x.shape
         b = x.shape[0]
-        x = F.relu(self.conv1(x))
-        cls = self.cls_layer(x)
-        bbox = self.bbox_layer(x).reshape(b, -1, 4)
-        print("shapes", cls.shape, bbox.shape)
+        s = x.shape[2]
+        x = F.relu(self.conv1(x))  # (b, 512, s, s)
+        cls = self.cls_layer(x).reshape(b, s, s, 9)  # (b, 9, s, s) -> (b, s, s, 9)
+        bbox = self.bbox_layer(x).reshape(b, s, s, 9, 4)  # (b, 9, s, s, 4) -> (b, s, s, 9, 4)
         return cls, bbox
-
-
-# TODO: create_anchors to translate the anchor boxes from image space to feature map space.

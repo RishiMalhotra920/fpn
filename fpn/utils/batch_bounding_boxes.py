@@ -6,116 +6,115 @@ import torch
 class BatchBoundingBoxes:
     """An image can have multiple boxes. This class stores bounding boxes across multiple images."""
 
-    def __init__(self, boxes_tensor: torch.Tensor):
-        """2d array of boxes is a list of bounding boxes in the format [x1, y1, x2, y2]
+    def __init__(self, boxes_tensor: torch.Tensor, format: str = "corner"):
+        """
+        Initialize BoundingBoxes with a tensor of bounding boxes.
 
         Args:
-            boxes_tensor (torch.Tensor): tensor of shape (b, nBB, 4)
+            boxes_tensor (torch.Tensor): tensor of shape (b, nBB, 4) where:
+                If format is 'corner': [x1, y1, x2, y2]
+                If format is 'center': [cx, cy, w, h]
+            format (str): 'corner' for [x1, y1, x2, y2] or 'center' for [cx, cy, w, h]
         """
-        self._bboxes = boxes_tensor
+        if format not in ["corner", "center"]:
+            raise ValueError("format must be either 'corner' or 'center'")
+
+        if boxes_tensor.dim() != 3 or boxes_tensor.shape[-1] != 4:
+            raise ValueError("boxes_tensor must have shape (b, nBB, 4)")
+
+        if format == "center":
+            self._bboxes = self._center_to_corner(boxes_tensor)
+        else:
+            self._bboxes = boxes_tensor
+
+    @staticmethod
+    def _center_to_corner(boxes):
+        new_boxes = torch.empty_like(boxes)
+        new_boxes[..., 0] = boxes[..., 0] - boxes[..., 2] / 2  # x1
+        new_boxes[..., 1] = boxes[..., 1] - boxes[..., 3] / 2  # y1
+        new_boxes[..., 2] = boxes[..., 0] + boxes[..., 2] / 2  # x2
+        new_boxes[..., 3] = boxes[..., 1] + boxes[..., 3] / 2  # y2
+        return new_boxes
+
+    @staticmethod
+    def _corner_to_center(boxes):
+        new_boxes = torch.empty_like(boxes)
+        new_boxes[..., 0] = (boxes[..., 0] + boxes[..., 2]) / 2  # cx
+        new_boxes[..., 1] = (boxes[..., 1] + boxes[..., 3]) / 2  # cy
+        new_boxes[..., 2] = boxes[..., 2] - boxes[..., 0]  # w
+        new_boxes[..., 3] = boxes[..., 3] - boxes[..., 1]  # h
+        return new_boxes
 
     @property
-    def bboxes(self):
+    def corner_format(self):
         return self._bboxes
+
+    @property
+    def center_format(self):
+        return self._corner_to_center(self._bboxes)
 
     @classmethod
     def from_anchors_and_rpn_bbox_offset_volume(
         cls,
-        anchor_scales: torch.Tensor,
-        anchor_ratios: torch.Tensor,
+        anchor_heights: torch.Tensor,
+        anchor_widths: torch.Tensor,
         offset_volume: torch.Tensor,
         image_size: tuple[int, int],
-        b: int,
-        f: int,
-        s: int,
     ):
         """Generate bounding boxes from the anchor boxes and the bounding box offsets.
 
         Args:
-            anchor_scales: torch.tensor(3)
-            anchor_ratios: torch.tensor(3)
-            offset_volume: torch.tensor(b, s*s*9, 4): volume coming out of the RPN
+            anchor_heights: tensor of shape (9, ) - heights of the anchor boxes
+            anchor_widths: tensor of shape (9, ) - heights of the anchor boxes
+            offset_volume: torch.tensor(b, s, s, 9, 4): volume coming out of the RPN
             image_size: tuple[int, int]: w, h
             b: int: batch size
             f: int: number of feature maps
             s: int: size of the feature map
         """
 
-        feature_map_x_step = image_size[0] // s
-        feature_map_y_step = image_size[1] // s
+        b, s, _, _, _ = offset_volume.shape
 
-        # grid containing x offsets
-        # anchors = torch.cartesian_prod(anchor_scales, anchor_scales)
-        # anchor_widths_unique = anchors[:, 0] * anchor_ratios  # (9, )
-        # anchor_heights_unique = anchors[:, 1] * (1 / anchor_ratios)  # (9, )
+        feature_map_x_step = image_size[0] / s
+        feature_map_y_step = image_size[1] / s
 
-        feature_map_grid_x_offsets_unique = torch.arange(0, image_size[0], feature_map_x_step)  # (s,)
-        feature_map_grid_y_offsets_unique = torch.arange(0, image_size[1], feature_map_y_step)  # (s,)
+        y_grid_cell_centers = ((torch.arange(0, s).float() * feature_map_x_step) + (feature_map_y_step / 2)).reshape(1, s, 1, 1)
+        x_grid_cell_centers = ((torch.arange(0, s).float() * feature_map_x_step) + (feature_map_y_step / 2)).reshape(1, 1, s, 1)
 
-        # create a cartesian product of all the unique values.
-        # we do this because there are s*s*9 anchor boxes at s*s locations.
-        # so to translate these offsets, we need to create a cartesian product of all the unique values and say
-        # - bbox # 34 is at x_offset x, y_offset y, anchor_width w, anchor_height h
-        print("shapes 3", feature_map_grid_x_offsets_unique.shape, feature_map_grid_y_offsets_unique.shape, anchor_scales.shape, anchor_ratios.shape)
-        cartesian_product_with_anchor_scales_and_ratios = torch.cartesian_prod(
-            feature_map_grid_x_offsets_unique, feature_map_grid_y_offsets_unique, anchor_scales, anchor_ratios
-        )
+        anchor_with_offset_positions = torch.zeros_like(offset_volume)  # (b, s, s, 3, 3, 4)
 
-        cartesian_product_with_anchor_w_and_h = cartesian_product_with_anchor_scales_and_ratios.clone()
+        anchor_with_offset_positions[:, :, :, :, 0] = offset_volume[:, :, :, :, 0] * anchor_widths + x_grid_cell_centers  # x = t_x * w + x
+        anchor_with_offset_positions[:, :, :, :, 1] = offset_volume[:, :, :, :, 1] * anchor_heights + y_grid_cell_centers
+        anchor_with_offset_positions[:, :, :, :, 2] = (
+            x_grid_cell_centers + torch.exp(offset_volume[:, :, :, :, 2]) * anchor_widths
+        )  # x2=x1 + exp(t_w) * w
+        anchor_with_offset_positions[:, :, :, :, 3] = (
+            y_grid_cell_centers + torch.exp(offset_volume[:, :, :, :, 3]) * anchor_heights
+        )  # y2=y1 + exp(t_h) * h
 
-        cartesian_product_with_anchor_w_and_h[:, 2] = (
-            cartesian_product_with_anchor_scales_and_ratios[:, 2] * cartesian_product_with_anchor_scales_and_ratios[:, 3]
-        )
-        cartesian_product_with_anchor_w_and_h[:, 3] = (
-            cartesian_product_with_anchor_scales_and_ratios[:, 2] / cartesian_product_with_anchor_scales_and_ratios[:, 3]
-        )
+        bounding_boxes_xywh = anchor_with_offset_positions.reshape(b, s * s * 9, 4)
 
-        feature_map_grid_x1_offsets = cartesian_product_with_anchor_w_and_h[:, 0]  # (s*s*9,)
-        feature_map_grid_y1_offsets = cartesian_product_with_anchor_w_and_h[:, 1]  # (s*s*9,)
-        anchor_widths = cartesian_product_with_anchor_w_and_h[:, 2]  # (s*s*9,)
-        anchor_heights = cartesian_product_with_anchor_w_and_h[:, 3]  # (s*s*9,)
+        return cls(bounding_boxes_xywh, format="center")
 
-        anchor_with_offset_volume = torch.zeros_like(offset_volume)  # (b, s*s*9, 4)
+    # @classmethod
+    # def from_bounding_boxes_and_offsets(cls, batch_bboxes: BatchBoundingBoxes, offsets: torch.Tensor) -> BatchBoundingBoxes:
+    #     """Given bounding boxes and offsets, adjust the bounding boxes.
 
-        anchor_positions = torch.zeros_like(offset_volume)  # (b, s*s*9, 4)
+    #     Args:
+    #         bboxes (BatchBoundingBoxes): bounding boxes
+    #         offsets (torch.Tensor): offsets to adjust the bounding boxes with shape (b, nBB, 4)
+    #     """
 
-        # for anchor_x1 ,calculate the center of feature map grid box and then subtract half of the anchor width
-        # for anchor_x2, add anchor width to anchor_x1
-        # similarly for y1 and y2
-        print("shapes", anchor_positions.shape, feature_map_grid_x1_offsets.shape, feature_map_x_step, anchor_widths.shape)
-        # (b, s*s*9, 4)  (s*s*9, )
-        anchor_positions[:, :, 0] = (feature_map_grid_x1_offsets + (feature_map_x_step / 2)) - anchor_widths / 2
-        anchor_positions[:, :, 1] = (feature_map_grid_y1_offsets + (feature_map_y_step / 2)) - anchor_heights / 2
-        anchor_positions[:, :, 2] = anchor_positions[:, :, 0] + anchor_widths
-        anchor_positions[:, :, 3] = anchor_positions[:, :, 1] + anchor_heights
+    #     prev_boxes = batch_bboxes.corner_format
 
-        # calculate the anchor with offset volumes
-        anchor_with_offset_volume[:, :, 0] = offset_volume[:, :, 0] * anchor_widths + anchor_positions[:, :, 0]  # x
-        anchor_with_offset_volume[:, :, 1] = offset_volume[:, :, 1] * anchor_heights + anchor_positions[:, :, 1]  # y
-        anchor_with_offset_volume[:, :, 2] = anchor_with_offset_volume[:, :, 0] + torch.exp(offset_volume[:, :, 2]) * anchor_widths  # x2=x1 + w
-        anchor_with_offset_volume[:, :, 3] = anchor_with_offset_volume[:, :, 1] + torch.exp(offset_volume[:, :, 3]) * anchor_heights  # y2=y1 + h
+    #     prev_boxes_width = prev_boxes[:, :, 2] - prev_boxes[:, :, 0]
+    #     prev_boxes_height = prev_boxes[:, :, 3] - prev_boxes[:, :, 1]
 
-        return cls(anchor_with_offset_volume)
+    #     new_boxes = torch.zeros_like(prev_boxes)
 
-    @classmethod
-    def from_bounding_boxes_and_offsets(cls, batch_bboxes: BatchBoundingBoxes, offsets: torch.Tensor) -> BatchBoundingBoxes:
-        """Given bounding boxes and offsets, adjust the bounding boxes.
+    #     new_boxes[:, :, 0] = offsets[:, :, 0] * prev_boxes_width + prev_boxes[:, :, 0]  # x1
+    #     new_boxes[:, :, 1] = offsets[:, :, 1] * prev_boxes_height + prev_boxes[:, :, 1]  # y1
+    #     new_boxes[:, :, 2] = new_boxes[:, :, 0] + prev_boxes_width * torch.exp(offsets[:, :, 2])  # x2 = x1 + w
+    #     new_boxes[:, :, 3] = new_boxes[:, :, 1] + prev_boxes_height * torch.exp(offsets[:, :, 3])  # y2 = y1 + h
 
-        Args:
-            bboxes (BatchBoundingBoxes): bounding boxes
-            offsets (torch.Tensor): offsets to adjust the bounding boxes with shape (b, nBB, 4)
-        """
-
-        prev_boxes = batch_bboxes.bboxes
-
-        prev_boxes_width = prev_boxes[:, :, 2] - prev_boxes[:, :, 0]
-        prev_boxes_height = prev_boxes[:, :, 3] - prev_boxes[:, :, 1]
-
-        new_boxes = torch.zeros_like(prev_boxes)
-
-        new_boxes[:, :, 0] = offsets[:, :, 0] * prev_boxes_width + prev_boxes[:, :, 0]  # x1
-        new_boxes[:, :, 1] = offsets[:, :, 1] * prev_boxes_height + prev_boxes[:, :, 1]  # y1
-        new_boxes[:, :, 2] = new_boxes[:, :, 0] + prev_boxes_width * torch.exp(offsets[:, :, 2])  # x2 = x1 + w
-        new_boxes[:, :, 3] = new_boxes[:, :, 1] + prev_boxes_height * torch.exp(offsets[:, :, 3])  # y2 = y1 + h
-
-        return cls(new_boxes)
+    #     return cls(new_boxes)

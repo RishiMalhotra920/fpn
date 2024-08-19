@@ -17,7 +17,7 @@ class CustomVOCDetectionDataset(VOCDetection):
         self.transform = transform
         self.max_num_bboxes = 20
 
-    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """get the item at the index
 
         Args:
@@ -64,11 +64,11 @@ class CustomVOCDetectionDataset(VOCDetection):
 
         padded_bboxes = torch.zeros((self.max_num_bboxes, 4))
         padded_cls = torch.zeros(self.max_num_bboxes, dtype=torch.long)
-        num_bboxes = bboxes.shape[0]
-        padded_cls[:num_bboxes] = cls
-        padded_bboxes[:num_bboxes] = bboxes
+        num_gt_bboxes_in_each_image = bboxes.shape[0]
+        padded_cls[:num_gt_bboxes_in_each_image] = cls
+        padded_bboxes[:num_gt_bboxes_in_each_image] = bboxes
 
-        return out_image, padded_cls, padded_bboxes, metadata  # type: ignore
+        return out_image, padded_cls, padded_bboxes, num_gt_bboxes_in_each_image, metadata  # type: ignore
 
     def get_dataloader(self, batch_size: int, num_workers: int, shuffle: bool) -> DataLoader:
         """Gets the dataloader for the dataset"""
