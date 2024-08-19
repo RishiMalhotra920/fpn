@@ -187,12 +187,7 @@ class Trainer:
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             self.optimizer.step()
 
-            # result_dict = self.metric.compute_values(
-            #     fast_rcnn_cls_pred.detach().cpu().numpy(),
-            #     fast_rcnn_bboxes_pred.detach().cpu().numpy(),
-            #     gt_cls.detach().cpu().numpy(),
-            #     gt_bboxes.detach().cpu().numpy(),
-            # )
+            # result_dict = self.metric.compute_values(fast_rcnn_cls_pred, fast_rcnn_bboxes_pred, gt_cls, gt_bboxes)
 
             # num_correct += result_dict["num_correct"]
             # num_incorrect_localization += result_dict["num_incorrect_localization"]

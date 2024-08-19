@@ -111,23 +111,23 @@ def main(
         backbone = FPN()
         faster_rcnn_with_fpn_model = FasterRCNN((image_dim, image_dim), nms_threshold)
 
-        run_manager = RunManager()  # empty run for testing!
+        # run_manager = RunManager()  # empty run for testing!
 
-        # run_manager = RunManager(
-        #     new_run_name=run_name,
-        #     source_files=[
-        #         "../fpn/lr_scheduler.py",
-        #         "../fpn/models/*.py",
-        #         "../fpn/trainer.py",
-        #         "train.py",
-        #         "../fpn/loss/*.py",
-        #     ],
-        # )
+        run_manager = RunManager(
+            new_run_name=run_name,
+            source_files=[
+                "../fpn/lr_scheduler.py",
+                "../fpn/models/*.py",
+                "../fpn/trainer.py",
+                "train.py",
+                "../fpn/loss/*.py",
+            ],
+        )
 
         # switch to DistributedDataParallel if you have the heart for it!
-        # model = torch.nn.DataParallel(faster_rcnn_with_fpn_model)
+        model = torch.nn.DataParallel(faster_rcnn_with_fpn_model)
         # for speed purposes. TODO: use DataParallel
-        model = faster_rcnn_with_fpn_model
+        # model = faster_rcnn_with_fpn_model
 
         if continue_from_checkpoint_signature is not None:
             print("Loading YOLO checkpoint ...")
@@ -177,7 +177,7 @@ def main(
 
         trainer = Trainer(
             backbone=backbone,
-            model=model,
+            model=model,  # type: ignore
             train_dataloader=train_dataloader,
             val_dataloader=test_dataloader,
             lr_scheduler=lr_scheduler,

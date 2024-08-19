@@ -2,6 +2,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from fpn.YOLO_metrics import YOLOMetrics
+
 
 class RPNLoss(nn.Module):
     def __init__(self):
@@ -142,6 +144,7 @@ class FasterRCNNLoss(nn.Module):
         self.background_class_idx = background_class_idx
         self.rpn_loss = RPNLoss()
         self.fast_rcnn_loss = FastRCNNLoss(background_class_idx)
+        self.metric = YOLOMetrics()
 
     def __call__(
         self,
@@ -292,5 +295,7 @@ class FasterRCNNLoss(nn.Module):
         )
 
         faster_rcnn_loss = rpn_loss_dict["rpn_total_loss"] + fast_rcnn_loss_dict["fast_rcnn_total_loss"]
+
+        # self.metric.compute_values(fast_rcnn_cls_pred, fast_rcnn_bboxes_max_class_pred, fast_rcnn_cls_gt, fast_rcnn_bboxes_gt
 
         return rpn_loss_dict | fast_rcnn_loss_dict | {"faster_rcnn_total_loss": faster_rcnn_loss}

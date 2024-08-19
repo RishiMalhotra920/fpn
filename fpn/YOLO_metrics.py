@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 
 from fpn.utils.compute_iou import compute_iou
 
@@ -9,7 +10,11 @@ class YOLOMetrics:
         self.CONF_INDEX = 5
 
     def compute_values(
-        self, fast_rcnn_cls_pred: np.ndarray, fast_rcnn_bboxes_pred: np.ndarray, fast_rcnn_cls_gt: np.ndarray, fast_rcnn_bboxes_gt: np.ndarray
+        self,
+        fast_rcnn_cls_pred: list[torch.Tensor],
+        fast_rcnn_bboxes_pred: list[torch.Tensor],
+        fast_rcnn_cls_gt: torch.Tensor,
+        fast_rcnn_bboxes_gt: torch.Tensor,
     ) -> dict:
         """Computes YOLO percent correctness according to the YOLOv1 paper."""
 
