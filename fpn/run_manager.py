@@ -43,7 +43,7 @@ class RunManager:
             self.temp_dir.mkdir(exist_ok=True)
 
             self.run = neptune.init_run(
-                project="towards-hi/image-classification",
+                project="towards-hi/fpn-with-faster-rcnn-object-detection",
                 api_token=config["neptune_api_token"],
                 name=new_run_name,
                 source_files=source_files,

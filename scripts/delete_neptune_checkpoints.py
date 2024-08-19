@@ -7,7 +7,7 @@ config = yaml.safe_load(open("config.yaml"))
 def delete():
     # Initialize Neptune client
     run = neptune.init_run(
-        project="towards-hi/image-classification",
+        project="towards-hi/fpn-with-faster-rcnn-object-detection",
         api_token=config["neptune_api_token"],
         with_id="IM-254",
     )

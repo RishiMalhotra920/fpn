@@ -25,7 +25,7 @@ def download_checkpoint(run_id: str, checkpoint_path: str) -> tuple[Path, str]:
     checkpoints_dir = Path(f"checkpoints/{run_id}")
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
     run = neptune.init_run(
-        project="towards-hi/image-classification",
+        project="towards-hi/fpn-with-faster-rcnn-object-detection",
         with_id=run_id,
         mode="read-only",
         api_token=config["neptune_api_token"],
@@ -72,15 +72,11 @@ def load_checkpoint(model: torch.nn.Module, checkpoint_signature: str) -> int:
     Example usage:
         load_model(model=model_0, epoch=5)
     """
-    assert (
-        ":" in checkpoint_signature
-    ), "checkpoint_signature should be in the format RunId:CheckpointPath"
+    assert ":" in checkpoint_signature, "checkpoint_signature should be in the format RunId:CheckpointPath"
 
     try:
         run_id, checkpoint_path = checkpoint_signature.split(":")
-        assert not checkpoint_path.endswith(
-            ".pth"
-        ), "checkpoint_path should not end with .pth"
+        assert not checkpoint_path.endswith(".pth"), "checkpoint_path should not end with .pth"
 
         file_name = checkpoint_path.split("/")[-1]
         if os.path.exists(f"checkpoints/{run_id}/{file_name}.pth"):
@@ -88,9 +84,7 @@ def load_checkpoint(model: torch.nn.Module, checkpoint_signature: str) -> int:
         else:
             checkpoints_dir, file_name = download_checkpoint(run_id, checkpoint_path)
 
-        params = torch.load(
-            checkpoints_dir / f"{file_name}.pth", map_location=torch.device("cpu")
-        )
+        params = torch.load(checkpoints_dir / f"{file_name}.pth", map_location=torch.device("cpu"))
         model.load_state_dict(params)
         # file_name should be epoch_{epoch}.pth
         epoch_number = int(file_name.split("_")[1])
@@ -111,18 +105,14 @@ def load_checkpoint(model: torch.nn.Module, checkpoint_signature: str) -> int:
     return start_epoch
 
 
-def load_checkpoint_for_yolo_from_pretrained_image_net_model(
-    model: torch.nn.Module, checkpoint_signature: str
-) -> None:
+def load_checkpoint_for_yolo_from_pretrained_image_net_model(model: torch.nn.Module, checkpoint_signature: str) -> None:
     """
     the weights loaded in are for nn.DataParallel(FeatureExtractor -> YOLOPretrainNet)
     the model in parameters is nn.DataParallel(FeatureExtractor -> YOLONet)
     load the weights for Feature Extractor from pretrained model and random initialize the rest
     """
     run_id, checkpoint_path = checkpoint_signature.split(":")
-    assert not checkpoint_path.endswith(
-        ".pth"
-    ), "checkpoint_path should not end with .pth"
+    assert not checkpoint_path.endswith(".pth"), "checkpoint_path should not end with .pth"
 
     temp_dir, file_name = download_checkpoint(run_id, checkpoint_path)
     params = torch.load(temp_dir / f"{file_name}.pth", map_location=torch.device("cpu"))

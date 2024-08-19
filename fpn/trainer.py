@@ -199,6 +199,10 @@ class Trainer:
 
             # log_gradients(self.model)
 
+            # doing a safe division here
+            num_predictions = num_predictions if num_predictions != 0 else 1
+            num_objects = num_objects if num_objects != 0 else 1
+
             if batch != 0 and batch % self.log_interval == 0:
                 self.run_manager.log_metrics(
                     {
@@ -314,6 +318,11 @@ class Trainer:
                 # num_objects += result_dict["num_objects"]
 
         # Note: if you average out the loss in the loss function, then you should divide by len(dataloader) here.
+
+        # doing a safe division here.
+        num_predictions = num_predictions if num_predictions != 0 else 1
+        num_objects = num_objects if num_objects != 0 else 1
+
         self.run_manager.log_metrics(
             {
                 "val/rpn_objectness_loss": rpn_objectness_loss / num_predictions,
