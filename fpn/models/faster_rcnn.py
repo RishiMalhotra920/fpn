@@ -14,6 +14,8 @@ class FasterRCNN(nn.Module):
         self,
         image_size: tuple[int, int],
         nms_threshold: float,
+        *,
+        device: str,
         num_rpn_rois_to_sample: int = 2000,
         rpn_pos_to_neg_ratio: float = 0.33,
         rpn_pos_iou: float = 0.7,
@@ -29,11 +31,12 @@ class FasterRCNN(nn.Module):
         self.rpn_neg_iou = rpn_neg_iou
         self.match_iou_threshold = match_iou_threshold
 
-        self.rpn = RPN(in_channels=256, num_anchor_scales=3, num_anchor_ratios=3)
+        self.rpn = RPN(in_channels=256, num_anchor_scales=3, num_anchor_ratios=3, device=device)
         self.fast_rcnn_classifier = FastRCNNClassifier(num_classes=21)
+        self.device = device
 
     def __call__(
-        self, fpn_map: torch.Tensor, anchor_heights: torch.Tensor, anchor_widths: torch.Tensor, gt_bboxes: torch.Tensor
+        self, fpn_map: torch.Tensor, anchor_heights: torch.Tensor, anchor_widths: torch.Tensor, gt_bboxes: torch.Tensor,
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
@@ -47,7 +50,7 @@ class FasterRCNN(nn.Module):
         return super().__call__(fpn_map, anchor_heights, anchor_widths, gt_bboxes)
 
     def forward(
-        self, fpn_map: torch.Tensor, anchor_heights: torch.Tensor, anchor_widths: torch.Tensor, gt_bboxes: torch.Tensor
+        self, fpn_map: torch.Tensor, anchor_heights: torch.Tensor, anchor_widths: torch.Tensor, gt_bboxes: torch.Tensor, 
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
@@ -73,7 +76,7 @@ class FasterRCNN(nn.Module):
 
         rpn_objectness, bbox_offset_volume = self.rpn(fpn_map)  # (b, s, s, 9), (b, s, s, 9, 4)
 
-        rpn_bboxes = BatchBoundingBoxes.from_anchors_and_rpn_bbox_offset_volume(anchor_heights, anchor_widths, bbox_offset_volume, self.image_size)
+        rpn_bboxes = BatchBoundingBoxes.from_anchors_and_rpn_bbox_offset_volume(anchor_heights, anchor_widths, bbox_offset_volume, self.image_size, self.device)
         rpn_objectness = rpn_objectness.reshape(b, -1)  # (b, s*s*9)
 
         # all objectness and bounding boxes from all the fpn maps

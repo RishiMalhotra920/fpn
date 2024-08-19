@@ -60,6 +60,7 @@ class BatchBoundingBoxes:
         anchor_widths: torch.Tensor,
         offset_volume: torch.Tensor,
         image_size: tuple[int, int],
+        device: str,
     ):
         """Generate bounding boxes from the anchor boxes and the bounding box offsets.
 
@@ -78,12 +79,11 @@ class BatchBoundingBoxes:
         feature_map_x_step = image_size[0] / s
         feature_map_y_step = image_size[1] / s
 
-        y_grid_cell_centers = ((torch.arange(0, s).float() * feature_map_x_step) + (feature_map_y_step / 2)).reshape(1, s, 1, 1)
-        x_grid_cell_centers = ((torch.arange(0, s).float() * feature_map_x_step) + (feature_map_y_step / 2)).reshape(1, 1, s, 1)
+        y_grid_cell_centers = ((torch.arange(0, s, device=device).float() * feature_map_x_step) + (feature_map_y_step / 2)).reshape(1, s, 1, 1)
+        x_grid_cell_centers = ((torch.arange(0, s, device=device).float() * feature_map_x_step) + (feature_map_y_step / 2)).reshape(1, 1, s, 1)
 
         anchor_with_offset_positions = torch.zeros_like(offset_volume)  # (b, s, s, 3, 3, 4)
-        print('devices', anchor_with_offset_positions.device, offset_volume.device, anchor_widths.device, x_grid_cell_centers.device)
-        exit()
+        # print('devices', anchor_with_offset_positions.device, offset_volume.device, anchor_widths.device, x_grid_cell_centers.device)
 
         anchor_with_offset_positions[:, :, :, :, 0] = offset_volume[:, :, :, :, 0] * anchor_widths + x_grid_cell_centers  # x = t_x * w + x
         anchor_with_offset_positions[:, :, :, :, 1] = offset_volume[:, :, :, :, 1] * anchor_heights + y_grid_cell_centers

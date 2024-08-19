@@ -108,8 +108,8 @@ def main(
 
         # Create model with help from model_builder.py
         # make it so that we minimize the sum of all the losses in the fpn!!
-        backbone = FPN()
-        faster_rcnn_with_fpn_model = FasterRCNN((image_dim, image_dim), nms_threshold)
+        backbone = FPN(device=device)
+        faster_rcnn_with_fpn_model = FasterRCNN((image_dim, image_dim), nms_threshold, device=device)
 
         # run_manager = RunManager()  # empty run for testing!
 
@@ -125,9 +125,10 @@ def main(
         )
 
         # switch to DistributedDataParallel if you have the heart for it!
-        model = torch.nn.DataParallel(faster_rcnn_with_fpn_model)
-        # for speed purposes. TODO: use DataParallel
-        # model = faster_rcnn_with_fpn_model
+        if device == 'cuda':
+            model = torch.nn.DataParallel(faster_rcnn_with_fpn_model)
+        else:
+            model = faster_rcnn_with_fpn_model
 
         if continue_from_checkpoint_signature is not None:
             print("Loading YOLO checkpoint ...")

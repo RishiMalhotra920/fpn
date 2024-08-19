@@ -107,7 +107,7 @@ def main(
 
         # Create model with help from model_builder.py
         # make it so that we minimize the sum of all the losses in the fpn!!
-        faster_rcnn_with_fpn_model = FasterRCNNWithFPN((image_dim, image_dim), nms_threshold)
+        faster_rcnn_with_fpn_model = FasterRCNNWithFPN((image_dim, image_dim), nms_threshold, device=device)
 
         run_manager = RunManager()  # empty run for testing!
 

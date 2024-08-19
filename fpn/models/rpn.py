@@ -16,13 +16,14 @@ class RPN(nn.Module):
 
     """
 
-    def __init__(self, in_channels, num_anchor_scales, num_anchor_ratios):
+    def __init__(self, in_channels: torch.Tensor, num_anchor_scales: torch.Tensor, num_anchor_ratios: torch.Tensor, device: str):
         super().__init__()
         self.num_anchor_scales = num_anchor_scales
         self.num_anchor_ratios = num_anchor_ratios
         self.conv1 = nn.Conv2d(in_channels, 512, kernel_size=3, padding=1)
         self.cls_layer = nn.Conv2d(512, num_anchor_scales * num_anchor_ratios, kernel_size=1)
         self.bbox_layer = nn.Conv2d(512, num_anchor_scales * num_anchor_ratios * 4, kernel_size=1)
+        self.device = device
 
     def __call__(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         return super().__call__(x)
