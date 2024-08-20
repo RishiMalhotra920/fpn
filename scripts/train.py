@@ -103,6 +103,7 @@ def main(
         train_dataset = CustomVOCDetectionDataset(config["pascal_voc_root_dir"], "train", data_transform)
         val_dataset = CustomVOCDetectionDataset(config["pascal_voc_root_dir"], "val", data_transform)
 
+        # change
         train_dataloader = train_dataset.get_dataloader(batch_size, num_workers, shuffle=True)
         test_dataloader = val_dataset.get_dataloader(batch_size, num_workers, shuffle=False)
 
