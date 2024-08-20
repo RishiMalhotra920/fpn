@@ -126,10 +126,10 @@ def main(
         )
 
         # switch to DistributedDataParallel if you have the heart for it!
-        if device == 'cuda':
+        if device == "cuda":
             model = torch.nn.DataParallel(faster_rcnn_with_fpn_model)
         else:
-            model = faster_rcnn_with_fpn_model
+            model = faster_rcnn_with_fpn_model  # type: ignore
 
         if continue_from_checkpoint_signature is not None:
             print("Loading YOLO checkpoint ...")

@@ -65,28 +65,6 @@ class FasterRCNNLoss(nn.Module):
         lambda_fast_rcnn_cls=10,
         lambda_fast_rcnn_bbox=10,
     ) -> dict[str, torch.Tensor]:
-        """Compute the FasterRCNN loss which comprises of RPN loss and FastRCNN loss.
-
-        For the RPN loss, we compute the IOU between the anchors and gt bbox and assign each anchor box's prediction to the gt bbox with the highest IOU.
-        For the FastRCNN loss, we compute the IOU between the pred bbox and gt bbox and assign each pred bbox to the gt bbox with the highest IOU.
-
-
-        # rpn_objectness_pred: list[num_pyramids, torch.Tensor(b, s*s*9)]
-        # fast_rcnn_bbox_pred: list[num_pyramids, torch.Tensor(b, 3*s*s*9, 4)]
-        # fast_rcnn_cls_pred: list[num_pyramids, list[num_images, torch.Tensor(L_i)]
-        # fast_rcnn_bbox_pred: list[num_pyramids, list[num_images, torch.Tensor(L_i, 4)]
-        # where L_i is the number of picked bounding boxes in image i
-
-        # gt_cls: torch.Tensor(b, max_gt_bbox) where there are nBB boxes padded with 0s.
-        # gt_bbox: torch.Tensor(b, max_gt_bbox, 4) where there are nBB boxes padded with 0s.
-        # num_gt_bbox_in_each_image: torch.Tensor(b) where each element is the number of gt bbox in each image.
-
-
-        Args:
-        Returns:
-            torch.Tensor: FasterRCNN loss
-        """
-
         rpn_loss_dict = self.rpn_loss(
             rpn_objectness_pred,
             rpn_bbox_pred,
@@ -108,7 +86,5 @@ class FasterRCNNLoss(nn.Module):
         )
 
         faster_rcnn_loss = rpn_loss_dict["rpn_total_loss"] + fast_rcnn_loss_dict["fast_rcnn_total_loss"]
-
-        # self.metric.compute_values(fast_rcnn_cls_pred, fast_rcnn_bbox_max_class_pred, fast_rcnn_cls_gt, fast_rcnn_bbox_gt
 
         return rpn_loss_dict | fast_rcnn_loss_dict | {"faster_rcnn_total_loss": faster_rcnn_loss}

@@ -43,19 +43,28 @@ class FastRCNNLoss(nn.Module):
         total_bbox_loss = torch.tensor(0.0, device=device)
         total_cls_loss = torch.tensor(0.0, device=device)
         num_images = len(fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox)
+        num_cls_pred = 0
+        num_bbox_pred = 0
         for image_idx in range(num_images):
             cls_loss = F.cross_entropy(
-                fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox[image_idx], fast_rcnn_cls_gt_nms_fg_and_bg_some[image_idx], reduction="mean"
+                fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox[image_idx], fast_rcnn_cls_gt_nms_fg_and_bg_some[image_idx], reduction="sum"
             )
 
             fg_bbox_indices = fast_rcnn_cls_gt_nms_fg_and_bg_some[image_idx] != self.background_class_index
-            filtered_image_bbox_pred = fast_rcnn_bbox_pred_for_some_rpn_bbox[image_idx][fg_bbox_indices]
-            filtered_image_bbox_gt = fast_rcnn_bbox_gt_nms_fg_and_bg_some[image_idx][fg_bbox_indices]
+            fg_bbox_pred = fast_rcnn_bbox_pred_for_some_rpn_bbox[image_idx][fg_bbox_indices]
+            fg_bbox_gt = fast_rcnn_bbox_gt_nms_fg_and_bg_some[image_idx][fg_bbox_indices]
 
-            bbox_loss = F.smooth_l1_loss(filtered_image_bbox_pred, filtered_image_bbox_gt, reduction="mean")
+            # if no fg bbox, don't compute the bbox loss.
+            if fg_bbox_pred.numel() != 0:
+                bbox_loss = F.smooth_l1_loss(fg_bbox_pred, fg_bbox_gt, reduction="sum")
+                total_bbox_loss += bbox_loss
+                num_bbox_pred += len(fg_bbox_pred)
 
             total_cls_loss += cls_loss
-            total_bbox_loss += bbox_loss
+            num_cls_pred += len(fast_rcnn_cls_gt_nms_fg_and_bg_some[image_idx])
+
+        total_cls_loss = total_cls_loss / (num_cls_pred + 1)
+        total_bbox_loss = total_bbox_loss / (num_bbox_pred + 1)
 
         return {
             "fast_rcnn_cls_loss": lambda_fast_rcnn_cls * total_cls_loss,

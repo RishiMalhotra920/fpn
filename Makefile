@@ -8,10 +8,10 @@ SOURCE_DIR := fpn
 TEMP_DIR := temp_flat
 
 # Default target
-all: zip
+all: flat
 
 # Target to create the flat zip file
-zip:
+flat:
 	@echo "Creating flat DIR from $(SOURCE_DIR) directory..."
 	@rm -rf $(TEMP_DIR)
 	@mkdir $(TEMP_DIR)
