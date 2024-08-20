@@ -99,6 +99,7 @@ VOC_CLASSES = [
     "background",
 ]
 BACKGROUND_CLASS_INDEX = VOC_CLASSES.index("background")
+NUM_CLASSES = len(VOC_CLASSES)
 
 VOC_class_to_index = {cls_name: idx for idx, cls_name in enumerate(VOC_CLASSES)}
 VOC_index_to_class = {idx: cls_name for idx, cls_name in enumerate(VOC_CLASSES)}

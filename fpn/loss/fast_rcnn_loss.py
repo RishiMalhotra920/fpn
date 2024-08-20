@@ -16,6 +16,8 @@ class FastRCNNLoss(nn.Module):
         bbox_label: list[torch.Tensor],
         lambda_fast_rcnn_cls: float,
         lambda_fast_rcnn_bbox: float,
+        *,
+        device: str,
     ) -> dict[str, torch.Tensor]:
         return super().__call__(
             cls_pred,
@@ -24,47 +26,35 @@ class FastRCNNLoss(nn.Module):
             bbox_label,
             lambda_fast_rcnn_cls=lambda_fast_rcnn_cls,
             lambda_fast_rcnn_bbox=lambda_fast_rcnn_bbox,
+            device=device,
         )
 
     def forward(
         self,
-        cls_pred: list[torch.Tensor],
-        bbox_pred: list[torch.Tensor],
-        cls_label: list[torch.Tensor],
-        bbox_label: list[torch.Tensor],
+        fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox: list[torch.Tensor],
+        fast_rcnn_bbox_pred_for_some_rpn_bbox: list[torch.Tensor],
+        fast_rcnn_cls_gt_nms_fg_and_bg_some: list[torch.Tensor],
+        fast_rcnn_bbox_gt_nms_fg_and_bg_some: list[torch.Tensor],
         lambda_fast_rcnn_cls: float,
         lambda_fast_rcnn_bbox: float,
+        *,
+        device: str,
     ) -> dict[str, torch.Tensor]:
-        """Compute the FastRCNN loss.
+        total_bbox_loss = torch.tensor(0.0, device=device)
+        total_cls_loss = torch.tensor(0.0, device=device)
+        num_images = len(fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox)
+        for image_idx in range(num_images):
+            cls_loss = F.cross_entropy(
+                fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox[image_idx], fast_rcnn_cls_gt_nms_fg_and_bg_some[image_idx], reduction="mean"
+            )
 
-        Args:
-            cls_pred (torch.Tensor): FastRCNN cls pred of shape (b, num_rois, num_classes)
-            bbox_pred (torch.Tensor): FastRCNN bbox pred of shape (b, num_rois, num_classes, 4)
-            cls_label (torch.Tensor): FastRCNN cls label of shape (b, num_rois)
-            bbox_label (torch.Tensor): FastRCNN bbox label of shape (b, num_rois, num_classes, 4)
-            lambda_ (int, optional): Param weighting cls_loss and bbox_loss. Defaults to 10.
+            fg_bbox_indices = fast_rcnn_cls_gt_nms_fg_and_bg_some[image_idx] != self.background_class_index
+            filtered_image_bbox_pred = fast_rcnn_bbox_pred_for_some_rpn_bbox[image_idx][fg_bbox_indices]
+            filtered_image_bbox_gt = fast_rcnn_bbox_gt_nms_fg_and_bg_some[image_idx][fg_bbox_indices]
 
-        Returns:
-            torch.Tensor: FastRCNN loss
-        """
-        # apply_offsets_to_fast_rcnn_bbox(
+            bbox_loss = F.smooth_l1_loss(filtered_image_bbox_pred, filtered_image_bbox_gt, reduction="mean")
 
-        # cls_loss = torch.mean(torch.tensor([for i in range(len(cls_pred))]))
-
-        # cls_loss = F.cross_entropy(cls_pred, cls_label, reduction="mean")
-
-        # filtered_bbox_pred = bbox_pred[cls_label != self.background_class_index]  # (b, num_gt_cls, 4)
-        # filtered_bbox_gt = bbox_label[cls_label != self.background_class_index]  # (b, num_gt_cls, 4)
-
-        total_bbox_loss = torch.tensor(0.0, device=cls_pred[0].device)
-        total_cls_loss = torch.tensor(0.0, device=cls_pred[0].device)
-        for image_idx in range(len(cls_label)):
-            cls_loss = F.cross_entropy(cls_pred[image_idx], cls_label[image_idx], reduction="mean")
             total_cls_loss += cls_loss
-            filtered_image_bbox_pred = bbox_pred[image_idx][cls_label[image_idx] != self.background_class_index]
-            filtered_image_bbox_gt = bbox_label[image_idx][cls_label[image_idx] != self.background_class_index]
-
-            bbox_loss = F.smooth_l1_loss(filtered_image_bbox_pred, filtered_image_bbox_gt, reduction="sum")
             total_bbox_loss += bbox_loss
 
         return {

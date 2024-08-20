@@ -13,6 +13,8 @@ class RPNLoss(nn.Module):
         bbox_pred: torch.Tensor,
         objectness_gt: torch.Tensor,
         bbox_gt: torch.Tensor,
+        *,
+        device: str,
         lambda_rpn_objectness=1,
         lambda_rpn_bbox=10,
     ) -> dict[str, torch.Tensor]:
@@ -21,6 +23,7 @@ class RPNLoss(nn.Module):
             bbox_pred,
             objectness_gt,
             bbox_gt,
+            device=device,
             lambda_rpn_objectness=lambda_rpn_objectness,
             lambda_rpn_bbox=lambda_rpn_bbox,
         )
@@ -31,6 +34,8 @@ class RPNLoss(nn.Module):
         bbox_pred: torch.Tensor,
         objectness_gt: torch.Tensor,
         bbox_gt: torch.Tensor,
+        *,
+        device: str,
         lambda_rpn_objectness=1,
         lambda_rpn_bbox=10,
     ) -> dict[str, torch.Tensor]:
@@ -53,20 +58,10 @@ class RPNLoss(nn.Module):
         """
 
         objectness_loss = F.binary_cross_entropy_with_logits(objectness_pred, objectness_gt, reduction="mean")
-        # filter out the background anchor bbox
 
-        assert not torch.isnan(objectness_pred).any(), "NaN found in objectness_pred"
-        assert not torch.isnan(bbox_pred).any(), "NaN found in bbox_pred"
-        assert not torch.isnan(objectness_gt).any(), "NaN found in objectness_gt"
-        assert not torch.isnan(bbox_gt).any(), "NaN found in bbox_gt"
-
-        assert not torch.isinf(objectness_pred).any(), "Inf found in objectness_pred"
-        assert not torch.isinf(bbox_pred).any(), "Inf found in bbox_pred"
-        assert not torch.isinf(objectness_gt).any(), "Inf found in objectness_gt"
-        assert not torch.isinf(bbox_gt).any(), "Inf found in bbox_gt"
         filtered_bbox_pred = bbox_pred[objectness_gt == 1]  # (b, num_gt_objectness, 4)
         filtered_bbox_gt = bbox_gt[objectness_gt == 1]  # (b, num_gt_objectness, 4)
-        bbox_loss = F.smooth_l1_loss(filtered_bbox_pred, filtered_bbox_gt, reduction="sum")
+        bbox_loss = F.smooth_l1_loss(filtered_bbox_pred, filtered_bbox_gt, reduction="mean")
 
         return {
             "rpn_objectness_loss": lambda_rpn_objectness * objectness_loss,

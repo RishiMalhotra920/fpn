@@ -112,8 +112,6 @@ class Trainer:
     def train_step(self, epoch: int) -> None:
         self.model.train()
 
-        device = self.device
-
         # explicit is better than implicit
         rpn_objectness_loss = 0.0
         rpn_bbox_loss = 0.0
@@ -123,12 +121,12 @@ class Trainer:
         fast_rcnn_total_loss = 0.0
         faster_rcnn_total_loss = 0.0
 
-        num_correct = 0
-        num_incorrect_localization = 0
-        num_incorrect_other = 0
-        num_incorrect_background = 0
-        num_predictions = 0
-        num_objects = 0  # number of objects in the batch
+        # num_correct = 0
+        # num_incorrect_localization = 0
+        # num_incorrect_other = 0
+        # num_incorrect_background = 0
+        # num_predictions = 0
+        # num_objects = 0  # number of objects in the batch
 
         for batch, (image, raw_cls_gt, raw_bbox_gt, num_gt_bbox_in_each_image, metadata) in tqdm(
             enumerate(self.train_dataloader), total=len(self.train_dataloader), desc="Train Step", leave=False
@@ -136,41 +134,33 @@ class Trainer:
             image, raw_cls_gt, raw_bbox_gt = image.to(self.device), raw_cls_gt.to(self.device), raw_bbox_gt.to(self.device)
             image, raw_cls_gt, raw_bbox_gt = cast(torch.Tensor, image), cast(torch.Tensor, raw_cls_gt), cast(torch.Tensor, raw_bbox_gt)
 
-            # gt_cls: (B, gt_cls)
-            # gt_bbox: (B, gt_cls, 4)
+            total_faster_rcnn_loss = torch.tensor(0.0, device=self.device)
 
             fpn_maps = self.backbone(image)
-
-            total_faster_rcnn_loss = torch.tensor(0.0, device=device)
 
             for fpn_map, anchor_heights, anchor_widths in zip(fpn_maps, self.all_anchor_heights, self.all_anchor_widths):
                 (
                     rpn_objectness_pred,
                     rpn_bbox_pred,
+                    fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
+                    fast_rcnn_bbox_pred_for_some_rpn_bbox,
                     rpn_objectness_gt,
-                    rpn_cls_gt,
-                    fast_rcnn_cls_pred,
-                    fast_rcnn_bbox_pred,
-                    list_of_picked_bbox_gt_matches,
-                    fast_rcnn_cls_targets,  # this is actually the label...
+                    rpn_bbox_gt,
+                    fast_rcnn_cls_gt_nms_fg_and_bg_some,
+                    fast_rcnn_bbox_gt_nms_fg_and_bg_some,
                 ) = self.model(fpn_map, anchor_heights, anchor_widths, raw_cls_gt, raw_bbox_gt)
 
                 # fast_rcnn_cls_pred: tuple[]
                 loss_dict = self.loss_fn(
                     rpn_objectness_pred,
                     rpn_bbox_pred,
-                    rpn_objectness_gt,  # TODO: rename in function
-                    rpn_cls_gt,  # TODO: rename in function
-                    # RPN_BBOX_ANCHOR.expand_as(rpn_bbox_pred),
-                    # foreground_objectness_pred,
-                    # foreground_bbox_pred,
-                    fast_rcnn_cls_pred,
-                    fast_rcnn_bbox_pred,
-                    list_of_picked_bbox_gt_matches,
-                    fast_rcnn_cls_targets,
-                    raw_cls_gt,
-                    raw_bbox_gt,
-                    # num_gt_bbox_in_each_image,
+                    fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
+                    fast_rcnn_bbox_pred_for_some_rpn_bbox,
+                    rpn_objectness_gt,
+                    rpn_bbox_gt,
+                    fast_rcnn_cls_gt_nms_fg_and_bg_some,
+                    fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+                    device=self.device,
                 )
 
                 rpn_objectness_loss += loss_dict["rpn_objectness_loss"].item()
@@ -196,28 +186,24 @@ class Trainer:
             # num_incorrect_background += result_dict["num_incorrect_background"]
             # num_objects += result_dict["num_objects"]
 
-            num_predictions += len(fast_rcnn_cls_pred)
-
             # log_gradients(self.model)
 
             # doing a safe division here
-            num_predictions = num_predictions if num_predictions != 0 else 1
-            num_objects = num_objects if num_objects != 0 else 1
 
             if batch != 0 and batch % self.log_interval == 0:
                 self.run_manager.log_metrics(
                     {
-                        "train/rpn_objectness_loss": rpn_objectness_loss / num_predictions,
-                        "train/rpn_bbox_loss": rpn_bbox_loss / num_predictions,
-                        "train/rpn_total_loss": rpn_total_loss / num_predictions,
-                        "train/fast_rcnn_cls_loss": fast_rcnn_cls_loss / num_predictions,
-                        "train/fast_rcnn_bbox_loss": fast_rcnn_bbox_loss / num_predictions,
-                        "train/fast_rcnn_total_loss": fast_rcnn_total_loss / num_predictions,
-                        "train/faster_rcnn_total_loss": faster_rcnn_total_loss / num_predictions,
-                        "train/accuracy": num_correct / num_objects,
-                        "train/percent_incorrect_localization": num_incorrect_localization / num_objects,
-                        "train/percent_incorrect_other": num_incorrect_other / num_objects,
-                        "train/percent_incorrect_background": num_incorrect_background / num_objects,
+                        "train/rpn_objectness_loss": rpn_objectness_loss,
+                        "train/rpn_bbox_loss": rpn_bbox_loss,
+                        "train/rpn_total_loss": rpn_total_loss,
+                        "train/fast_rcnn_cls_loss": fast_rcnn_cls_loss,
+                        "train/fast_rcnn_bbox_loss": fast_rcnn_bbox_loss,
+                        "train/fast_rcnn_total_loss": fast_rcnn_total_loss,
+                        "train/faster_rcnn_total_loss": faster_rcnn_total_loss,
+                        # "train/accuracy": num_correct / num_objects,
+                        # "train/percent_incorrect_localization": num_incorrect_localization / num_objects,
+                        # "train/percent_incorrect_other": num_incorrect_other / num_objects,
+                        # "train/percent_incorrect_background": num_incorrect_background / num_objects,
                     },
                     epoch + batch / len(self.train_dataloader),
                 )
@@ -252,49 +238,38 @@ class Trainer:
         num_incorrect_localization = 0
         num_incorrect_other = 0
         num_incorrect_background = 0
-        num_predictions = 0
-        num_objects = 0
 
         with torch.inference_mode():
-            for batch, (image, gt_cls, gt_bbox, num_gt_bbox_in_each_image, metadata) in tqdm(
-                enumerate(self.train_dataloader), total=len(self.val_dataloader), desc="Test Step", leave=False
+            for batch, (image, raw_cls_gt, raw_bbox_gt, num_gt_bbox_in_each_image, metadata) in tqdm(
+                enumerate(self.train_dataloader), total=len(self.train_dataloader), desc="Train Step", leave=False
             ):
-                image, gt_cls, gt_bbox = image.to(self.device), gt_cls.to(self.device), gt_bbox.to(self.device)
-                image, gt_cls, gt_bbox = cast(torch.Tensor, image), cast(torch.Tensor, gt_cls), cast(torch.Tensor, gt_bbox)
-
-                # gt_cls: (B, gt_cls)
-                # gt_bbox: (B, gt_cls, 4)
+                image, raw_cls_gt, raw_bbox_gt = image.to(self.device), raw_cls_gt.to(self.device), raw_bbox_gt.to(self.device)
+                image, raw_cls_gt, raw_bbox_gt = cast(torch.Tensor, image), cast(torch.Tensor, raw_cls_gt), cast(torch.Tensor, raw_bbox_gt)
 
                 fpn_maps = self.backbone(image)
-
                 for fpn_map, anchor_heights, anchor_widths in zip(fpn_maps, self.all_anchor_heights, self.all_anchor_widths):
                     (
                         rpn_objectness_pred,
                         rpn_bbox_pred,
-                        is_rpn_pred_foreground,
-                        rpn_bbox_matches,
-                        fast_rcnn_cls_pred,
-                        fast_rcnn_bbox_pred,
-                        list_of_picked_bbox_gt_matches,
-                        fast_rcnn_cls_targets,  # this is actually the label...
-                    ) = self.model(fpn_map, anchor_heights, anchor_widths, gt_bbox)
+                        fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
+                        fast_rcnn_bbox_pred_for_some_rpn_bbox,
+                        rpn_objectness_gt,
+                        rpn_bbox_gt,
+                        fast_rcnn_cls_gt_nms_fg_and_bg_some,
+                        fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+                    ) = self.model(fpn_map, anchor_heights, anchor_widths, raw_cls_gt, raw_bbox_gt)
 
                     # fast_rcnn_cls_pred: tuple[]
                     loss_dict = self.loss_fn(
                         rpn_objectness_pred,
                         rpn_bbox_pred,
-                        is_rpn_pred_foreground,
-                        rpn_bbox_matches,
-                        # RPN_BBOX_ANCHOR.expand_as(rpn_bbox_pred),
-                        # foreground_objectness_pred,
-                        # foreground_bbox_pred,
-                        fast_rcnn_cls_pred,
-                        fast_rcnn_bbox_pred,
-                        list_of_picked_bbox_gt_matches,
-                        fast_rcnn_cls_targets,
-                        gt_cls,
-                        gt_bbox,
-                        # num_gt_bbox_in_each_image,
+                        fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
+                        fast_rcnn_bbox_pred_for_some_rpn_bbox,
+                        rpn_objectness_gt,
+                        rpn_bbox_gt,
+                        fast_rcnn_cls_gt_nms_fg_and_bg_some,
+                        fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+                        device=self.device,
                     )
 
                     rpn_objectness_loss += loss_dict["rpn_objectness_loss"].item()
@@ -305,42 +280,25 @@ class Trainer:
                     fast_rcnn_total_loss += loss_dict["fast_rcnn_total_loss"].item()
                     faster_rcnn_total_loss += loss_dict["faster_rcnn_total_loss"].item()
 
-                # result_dict = self.metric.compute_values(
-                #     fast_rcnn_cls_pred.detach().cpu().numpy(),
-                #     fast_rcnn_bbox_pred.detach().cpu().numpy(),
-                #     gt_cls.detach().cpu().numpy(),
-                #     gt_bbox.detach().cpu().numpy(),
-                # )
-
                 # num_correct += result_dict["num_correct"]
                 # num_incorrect_localization += result_dict["num_incorrect_localization"]
                 # num_incorrect_other += result_dict["num_incorrect_other"]
                 # num_incorrect_background += result_dict["num_incorrect_background"]
                 # num_objects += result_dict["num_objects"]
 
-        # doing a safe division here
-        num_predictions = num_predictions if num_predictions != 0 else 1
-        num_objects = num_objects if num_objects != 0 else 1
-
-        # Note: if you average out the loss in the loss function, then you should divide by len(dataloader) here.
-
-        # doing a safe division here.
-        num_predictions = num_predictions if num_predictions != 0 else 1
-        num_objects = num_objects if num_objects != 0 else 1
-
         self.run_manager.log_metrics(
             {
-                "val/rpn_objectness_loss": rpn_objectness_loss / num_predictions,
-                "val/rpn_bbox_loss": rpn_bbox_loss / num_predictions,
-                "val/rpn_total_loss": rpn_total_loss / num_predictions,
-                "val/fast_rcnn_cls_loss": fast_rcnn_cls_loss / num_predictions,
-                "val/fast_rcnn_bbox_loss": fast_rcnn_bbox_loss / num_predictions,
-                "val/fast_rcnn_total_loss": fast_rcnn_total_loss / num_predictions,
-                "val/faster_rcnn_total_loss": faster_rcnn_total_loss / num_predictions,
-                "val/accuracy": num_correct / num_objects,
-                "val/percent_incorrect_localization": num_incorrect_localization / num_objects,
-                "val/percent_incorrect_other": num_incorrect_other / num_objects,
-                "val/percent_incorrect_background": num_incorrect_background / num_objects,
+                "val/rpn_objectness_loss": rpn_objectness_loss,
+                "val/rpn_bbox_loss": rpn_bbox_loss,
+                "val/rpn_total_loss": rpn_total_loss,
+                "val/fast_rcnn_cls_loss": fast_rcnn_cls_loss,
+                "val/fast_rcnn_bbox_loss": fast_rcnn_bbox_loss,
+                "val/fast_rcnn_total_loss": fast_rcnn_total_loss,
+                "val/faster_rcnn_total_loss": faster_rcnn_total_loss,
+                "val/accuracy": num_correct,
+                "val/percent_incorrect_localization": num_incorrect_localization,
+                "val/percent_incorrect_other": num_incorrect_other,
+                "val/percent_incorrect_background": num_incorrect_background,
             },
             epoch,
         )

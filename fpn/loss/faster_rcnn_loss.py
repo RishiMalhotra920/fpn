@@ -19,16 +19,14 @@ class FasterRCNNLoss(nn.Module):
         self,
         rpn_objectness_pred: torch.Tensor,
         rpn_bbox_pred: torch.Tensor,
-        is_rpn_preds_foreground: list[torch.Tensor],
-        rpn_bbox_matches: list[torch.Tensor],
-        # rpn_bbox_anchors: torch.Tensor,
-        fast_rcnn_cls_pred: list[torch.Tensor],
-        fast_rcnn_bbox_pred: list[torch.Tensor],
-        list_of_picked_bbox_gt_matches: list[torch.Tensor],
-        is_fast_rcnn_preds_foreground: list[torch.Tensor],
-        gt_cls: torch.Tensor,
-        gt_bbox: torch.Tensor,
+        fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox: list[torch.Tensor],
+        fast_rcnn_bbox_pred_for_some_rpn_bbox: list[torch.Tensor],
+        rpn_objectness_gt: torch.Tensor,
+        rpn_bbox_gt: torch.Tensor,
+        fast_rcnn_cls_gt_nms_fg_and_bg_some: list[torch.Tensor],
+        fast_rcnn_bbox_gt_nms_fg_and_bg_some: list[torch.Tensor],
         *,
+        device: str,
         lambda_rpn_objectness=1,
         lambda_rpn_bbox=10,
         lambda_fast_rcnn_cls=10,
@@ -37,14 +35,13 @@ class FasterRCNNLoss(nn.Module):
         return super().__call__(
             rpn_objectness_pred,
             rpn_bbox_pred,
-            is_rpn_preds_foreground,
-            rpn_bbox_matches,
-            fast_rcnn_cls_pred,
-            fast_rcnn_bbox_pred,
-            list_of_picked_bbox_gt_matches,
-            is_fast_rcnn_preds_foreground,
-            gt_cls,
-            gt_bbox,
+            fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
+            fast_rcnn_bbox_pred_for_some_rpn_bbox,
+            rpn_objectness_gt,
+            rpn_bbox_gt,
+            fast_rcnn_cls_gt_nms_fg_and_bg_some,
+            fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+            device=device,
             lambda_rpn_objectness=lambda_rpn_objectness,
             lambda_rpn_bbox=lambda_rpn_bbox,
             lambda_fast_rcnn_cls=lambda_fast_rcnn_cls,
@@ -55,16 +52,14 @@ class FasterRCNNLoss(nn.Module):
         self,
         rpn_objectness_pred: torch.Tensor,
         rpn_bbox_pred: torch.Tensor,
-        is_rpn_preds_foreground: list[torch.Tensor],
-        rpn_bbox_matches: list[torch.Tensor],
-        # rpn_bbox_anchors: torch.Tensor,
-        fast_rcnn_cls_pred: list[torch.Tensor],
-        fast_rcnn_bbox_pred: list[torch.Tensor],
-        list_of_picked_bbox_gt_matches: list[torch.Tensor],
-        is_fast_rcnn_preds_foreground: list[torch.Tensor],
-        gt_cls: torch.Tensor,
-        gt_bbox: torch.Tensor,
+        fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox: list[torch.Tensor],
+        fast_rcnn_bbox_pred_for_some_rpn_bbox: list[torch.Tensor],
+        rpn_objectness_gt: torch.Tensor,
+        rpn_bbox_gt: torch.Tensor,
+        fast_rcnn_cls_gt_nms_fg_and_bg_some: list[torch.Tensor],
+        fast_rcnn_bbox_gt_nms_fg_and_bg_some: list[torch.Tensor],
         *,
+        device: str,
         lambda_rpn_objectness=1,
         lambda_rpn_bbox=10,
         lambda_fast_rcnn_cls=10,
@@ -92,52 +87,24 @@ class FasterRCNNLoss(nn.Module):
             torch.Tensor: FasterRCNN loss
         """
 
-        # all of these should be calculated in forward() not in loss()
-        rpn_bbox_gt = [gt_bbox[i, rpn_bbox_matches[i]] for i in range(gt_bbox.shape[0])]
-
-        fast_rcnn_cls_gt = [
-            (
-                (~is_image_preds_foreground & torch.full_like(is_image_preds_foreground, self.background_class_idx, device=self.device))
-                + (is_image_preds_foreground & gt_cls[i, is_image_preds_foreground])
-            )
-            for i, (is_image_preds_foreground, image_picked_bbox_gt_matches) in enumerate(
-                zip(is_fast_rcnn_preds_foreground, list_of_picked_bbox_gt_matches)
-            )
-        ]
-
-        fast_rcnn_bbox_gt = []
-        fast_rcnn_bbox_max_class_pred = []
-        for i in range(len(list_of_picked_bbox_gt_matches)):
-            picked_bbox_gt_matches = list_of_picked_bbox_gt_matches[i]
-            fast_rcnn_bbox_gt.append(gt_bbox[i, picked_bbox_gt_matches])
-            row_indices = torch.arange(len(fast_rcnn_cls_gt[i]), device=self.device)
-            max_class_pred_index = fast_rcnn_cls_gt[i]
-            print(f"Image {i}:")
-            print(list(max_class_pred_index))
-            print(f"  fast_rcnn_bbox_pred[i] shape: {fast_rcnn_bbox_pred[i].shape}")
-            print(f"  row_indices shape: {row_indices.shape}")
-            print(f"  max_class_pred_index shape: {max_class_pred_index.shape}")
-            print(f"  row_indices max: {row_indices.max().item()}")
-            print(f"  max_class_pred_index max: {max_class_pred_index.max().item()}")
-            print(f"  fast_rcnn_cls_gt[i] unique values: {fast_rcnn_cls_gt[i].unique()}")
-
-            # Check if indices are within bounds
-            assert row_indices.max() < fast_rcnn_bbox_pred[i].shape[0], "row_indices out of bounds"
-            assert max_class_pred_index.max() < fast_rcnn_bbox_pred[i].shape[1], "max_class_pred_index out of bounds"
-
-            fast_rcnn_bbox_max_class_pred.append(fast_rcnn_bbox_pred[i][row_indices, max_class_pred_index])
-
         rpn_loss_dict = self.rpn_loss(
             rpn_objectness_pred,
             rpn_bbox_pred,
-            torch.stack(is_rpn_preds_foreground).float(),
-            torch.stack(rpn_bbox_gt),
-            lambda_rpn_objectness,
-            lambda_rpn_bbox,
+            rpn_objectness_gt,
+            rpn_bbox_gt,
+            lambda_rpn_objectness=lambda_rpn_objectness,
+            lambda_rpn_bbox=lambda_rpn_bbox,
+            device=device,
         )
 
         fast_rcnn_loss_dict = self.fast_rcnn_loss(
-            fast_rcnn_cls_pred, fast_rcnn_bbox_max_class_pred, fast_rcnn_cls_gt, fast_rcnn_bbox_gt, lambda_fast_rcnn_cls, lambda_fast_rcnn_bbox
+            fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
+            fast_rcnn_bbox_pred_for_some_rpn_bbox,
+            fast_rcnn_cls_gt_nms_fg_and_bg_some,
+            fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+            lambda_fast_rcnn_cls=lambda_fast_rcnn_cls,
+            lambda_fast_rcnn_bbox=lambda_fast_rcnn_bbox,
+            device=device,
         )
 
         faster_rcnn_loss = rpn_loss_dict["rpn_total_loss"] + fast_rcnn_loss_dict["fast_rcnn_total_loss"]

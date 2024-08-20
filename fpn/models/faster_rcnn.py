@@ -4,6 +4,7 @@ import torchvision
 from torch import nn
 from torch.utils.data import Dataset
 
+from fpn.data.VOC_data import BACKGROUND_CLASS_INDEX
 from fpn.models.fast_rcnn_classifier import FastRCNNClassifier
 from fpn.models.rpn import RPN
 from fpn.utils.batch_bounding_boxes import BatchBoundingBoxes
@@ -48,8 +49,8 @@ class FasterRCNN(nn.Module):
         torch.Tensor,
         list[torch.Tensor],
         list[torch.Tensor],
-        list[torch.Tensor],
-        list[torch.Tensor],
+        torch.Tensor,
+        torch.Tensor,
         list[torch.Tensor],
         list[torch.Tensor],
     ]:
@@ -67,8 +68,8 @@ class FasterRCNN(nn.Module):
         torch.Tensor,
         list[torch.Tensor],
         list[torch.Tensor],
-        list[torch.Tensor],
-        list[torch.Tensor],
+        torch.Tensor,
+        torch.Tensor,
         list[torch.Tensor],
         list[torch.Tensor],
     ]:
@@ -95,13 +96,11 @@ class FasterRCNN(nn.Module):
 
         # should do this matching with anchors btw for stability.
         # get rpn_bbox_gt from here as well.
-        rpn_objectness_gt, rpn_cls_gt, rpn_bbox_gt = self.extract_rpn_objectness_and_rpn_gt_index_match_for_rpn_bbox_pred(
+        rpn_objectness_gt, rpn_cls_gt, rpn_bbox_gt, rpn_bbox_pred_and_best_rpn_bbox_gt_iou = self.extract_rpn_gt(
             rpn_bbox_pred, raw_cls_gt, raw_bbox_gt, self.match_iou_threshold
         )
 
-        # TODO: note that rpn_objectness_gt and rpn_gt_index_match_for_bbox_pred and rpn_bbox_gt
-        # can all be made into one big tensor very easily. see TODO optim1
-
+        # for inference, pick the top N bboxes according to confidence scores.
         (
             rpn_bbox_pred_nms_fg_and_bg_some,
             fast_rcnn_cls_gt_nms_fg_and_bg_some,
@@ -109,9 +108,9 @@ class FasterRCNN(nn.Module):
         ) = self.pick_fg_and_bg_objectness_and_bbox(
             rpn_objectness_pred,
             rpn_bbox_pred,
-            # rpn_objectness_gt,
-            rpn_cls_gt,  # TODO: or rpn_cls_gt?
-            rpn_bbox_gt,  # TODO: or rpn_bbox_gt?
+            rpn_cls_gt,
+            rpn_bbox_gt,
+            rpn_bbox_pred_and_best_rpn_bbox_gt_iou,
             k=self.num_rpn_rois_to_sample,
             pos_to_neg_ratio=self.rpn_pos_to_neg_ratio,
             pos_iou=self.rpn_pos_iou,
@@ -157,13 +156,16 @@ class FasterRCNN(nn.Module):
         ):
             # fast_rcnn_image_bbox_offsets_for_all_classes: (L_i, num_classes, 4)
             # fast_rcnn_image_cls_gt_nms_fg_and_bg_some: (L_i)
-            fast_rcnn_image_bbox_offsets_for_gt_class = fast_rcnn_image_bbox_offsets_for_all_classes[:, fast_rcnn_image_cls_gt_nms_fg_and_bg_some, :]
+            row_indices = torch.arange(fast_rcnn_image_cls_gt_nms_fg_and_bg_some.shape[0], device=self.device)
+            fast_rcnn_image_bbox_offsets_for_gt_class = fast_rcnn_image_bbox_offsets_for_all_classes[
+                row_indices, fast_rcnn_image_cls_gt_nms_fg_and_bg_some, :
+            ]
             fast_rcnn_bbox_offsets_for_gt_class.append(fast_rcnn_image_bbox_offsets_for_gt_class)
         return fast_rcnn_bbox_offsets_for_gt_class
 
-    def extract_rpn_objectness_and_rpn_gt_index_match_for_rpn_bbox_pred(
+    def extract_rpn_gt(
         self, rpn_bbox_pred: torch.Tensor, raw_cls_gt: torch.Tensor, raw_bbox_gt: torch.Tensor, iou_threshold: float
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Match the pred bbox to the gt bbox based on the IOU and return if the pred bbox are foreground or not.
 
         Here's what's happening:
@@ -187,6 +189,7 @@ class FasterRCNN(nn.Module):
         rpn_cls_gt = []
         rpn_bbox_gt = []
         rpn_objectness_gt = []
+        rpn_bbox_pred_and_best_rpn_bbox_gt_iou = []
         b = len(rpn_bbox_pred)
 
         for image_idx in range(b):
@@ -197,19 +200,18 @@ class FasterRCNN(nn.Module):
 
             best_iou, best_gt_index = torch.max(ious, dim=1)  # (z_i)
             is_foreground = best_iou > iou_threshold  # (z_i)
-            # image_cls_gt = torch.full_like(best_gt_index, self.background_class_idx, device=self.device)
-            # image_cls_gt[is_foreground] = raw_cls_gt[image_idx][best_gt_index[is_foreground]]
 
             image_cls_gt = torch.where(
-                is_foreground, raw_cls_gt[image_idx][best_gt_index], torch.full_like(best_gt_index, self.background_class_idx, device=self.device)
+                is_foreground, raw_cls_gt[image_idx][best_gt_index], torch.full_like(best_gt_index, BACKGROUND_CLASS_INDEX, device=self.device)
             )
             image_bbox_gt = raw_bbox_gt[image_idx][best_gt_index]  # (z_i, 4)
 
-            rpn_objectness_gt.append(is_foreground)
+            rpn_objectness_gt.append(is_foreground.float())
             rpn_cls_gt.append(image_cls_gt)
             rpn_bbox_gt.append(image_bbox_gt)
+            rpn_bbox_pred_and_best_rpn_bbox_gt_iou.append(best_iou)  # (z_i)
 
-        return rpn_objectness_gt, rpn_cls_gt, rpn_bbox_gt
+        return torch.stack(rpn_objectness_gt), torch.stack(rpn_cls_gt), torch.stack(rpn_bbox_gt), torch.stack(rpn_bbox_pred_and_best_rpn_bbox_gt_iou)
 
     def apply_offsets_to_fast_rcnn_bbox(self, list_of_picked_bbox: list[torch.Tensor], offsets: list[torch.Tensor]) -> list[torch.Tensor]:
         """Apply the bounding box regression offsets to the bounding boxes.
@@ -242,8 +244,9 @@ class FasterRCNN(nn.Module):
         self,
         rpn_objectness_pred: torch.Tensor,
         rpn_bbox_pred: torch.Tensor,
-        rpn_cls_gt: list[torch.Tensor],
-        rpn_bbox_gt: list[torch.Tensor],
+        rpn_cls_gt: torch.Tensor,
+        rpn_bbox_gt: torch.Tensor,
+        rpn_bbox_pred_and_best_rpn_bbox_gt_iou: torch.Tensor,
         *,
         k: int,
         pos_to_neg_ratio: float,
@@ -273,18 +276,20 @@ class FasterRCNN(nn.Module):
             # rpn_bbox_pred_nms_indices - these are the indices of the boxes that are kept after nms
             rpn_bbox_pred_nms_indices = torchvision.ops.nms(rpn_bbox_pred[image_idx], rpn_objectness_pred[image_idx], self.nms_threshold)
             rpn_bbox_pred_nms = rpn_bbox_pred[image_idx][rpn_bbox_pred_nms_indices]  # (#nms_boxes, 4)
-            rpn_objectness_pred_nms = rpn_objectness_pred[image_idx][rpn_bbox_pred_nms_indices]  # (#nms_boxes)
-            raw_fast_rcnn_cls_gt_nms = rpn_cls_gt[image_idx][rpn_bbox_pred_nms_indices]  # (#nms_boxes)
-            raw_fast_rcnn_bbox_gt_nms = rpn_bbox_gt[image_idx][rpn_bbox_pred_nms_indices]  # (#nms_boxes, 4)
+            rpn_bbox_pred_and_best_rpn_bbox_gt_iou_nms = rpn_bbox_pred_and_best_rpn_bbox_gt_iou[image_idx, rpn_bbox_pred_nms_indices]  # (#nms_boxes)
+            raw_fast_rcnn_cls_gt_nms = rpn_cls_gt[image_idx, rpn_bbox_pred_nms_indices]  # (#nms_boxes)
+            raw_fast_rcnn_bbox_gt_nms = rpn_bbox_gt[image_idx, rpn_bbox_pred_nms_indices]  # (#nms_boxes, 4)
 
-            is_rpn_pred_fg = rpn_objectness_pred_nms > pos_iou  # (#foreground predicted boxes)
+            is_rpn_pred_bg = rpn_bbox_pred_and_best_rpn_bbox_gt_iou_nms < neg_iou
+            is_rpn_pred_fg = rpn_bbox_pred_and_best_rpn_bbox_gt_iou_nms > pos_iou
+            # is_rpn_pred_fg = rpn_objectness_pred_nms > pos_iou  # (#foreground predicted boxes)
 
             # pick some random bg bboxes
-            num_bg_bbox = (~is_rpn_pred_fg).sum().item()
+            num_bg_bbox = (is_rpn_pred_bg).sum().item()
             random_neg_index = torch.randperm(int(min(num_bg_bbox, k) * (1 - pos_to_neg_ratio)), device=self.device)  # eg: [3, 1, 2, 0, ... 891]
-            rpn_bbox_pred_nms_bg_some = rpn_bbox_pred_nms[~is_rpn_pred_fg][random_neg_index, :]  # (b, some, 4)
-            raw_fast_rcnn_cls_gt_nms_bg_some = raw_fast_rcnn_cls_gt_nms[~is_rpn_pred_fg][random_neg_index]  # (b, some)
-            raw_fast_rcnn_bbox_gt_nms_bg_some = raw_fast_rcnn_bbox_gt_nms[~is_rpn_pred_fg][random_neg_index, :]  # (b, some, 4)
+            rpn_bbox_pred_nms_bg_some = rpn_bbox_pred_nms[is_rpn_pred_bg][random_neg_index, :]  # (b, some, 4)
+            raw_fast_rcnn_cls_gt_nms_bg_some = raw_fast_rcnn_cls_gt_nms[is_rpn_pred_bg][random_neg_index]  # (b, some)
+            raw_fast_rcnn_bbox_gt_nms_bg_some = raw_fast_rcnn_bbox_gt_nms[is_rpn_pred_bg][random_neg_index, :]  # (b, some, 4)
 
             # pick some random fg bboxes
             num_fg_bbox = is_rpn_pred_fg.sum().item()
@@ -301,16 +306,6 @@ class FasterRCNN(nn.Module):
             list_of_rpn_bbox_pred_nms_fg_and_bg_some.append(rpn_bbox_pred_nms_fg_and_bg_some)
             list_of_fast_rcnn_cls_gt_nms_fg_and_bg_some.append(raw_fast_rcnn_cls_gt_nms_fg_and_bg_some)
             list_of_fast_rcnn_bbox_gt_nms_fg_and_bg_some.append(raw_fast_rcnn_bbox_gt_nms_fg_and_bg_some)
-
-            # # TODO: instead of calculating is_foreground here, calculate
-            # # the fast rcnn targets directly.
-            # fast = raw_cls_gt[image_idx,]
-
-            # is_foreground = torch.cat(
-            #     [torch.ones_like(random_pos_index, device=self.device), torch.zeros_like(random_neg_index, device=self.device)], dim=0
-            # )
-
-            # is_fast_rcnn_pred_foreground.append(is_foreground)
 
         return (
             list_of_rpn_bbox_pred_nms_fg_and_bg_some,
