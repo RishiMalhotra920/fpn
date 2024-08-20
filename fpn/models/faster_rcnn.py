@@ -14,6 +14,8 @@ class FasterRCNN(nn.Module):
         self,
         image_size: tuple[int, int],
         nms_threshold: float,
+        *,
+        device: str,
         num_rpn_rois_to_sample: int = 2000,
         rpn_pos_to_neg_ratio: float = 0.33,
         rpn_pos_iou: float = 0.7,
@@ -29,11 +31,12 @@ class FasterRCNN(nn.Module):
         self.rpn_neg_iou = rpn_neg_iou
         self.match_iou_threshold = match_iou_threshold
 
-        self.rpn = RPN(in_channels=256, num_anchor_scales=3, num_anchor_ratios=3)
+        self.rpn = RPN(in_channels=256, num_anchor_scales=3, num_anchor_ratios=3, device=device)
         self.fast_rcnn_classifier = FastRCNNClassifier(num_classes=21)
+        self.device = device
 
     def __call__(
-        self, fpn_map: torch.Tensor, anchor_heights: torch.Tensor, anchor_widths: torch.Tensor, gt_bboxes: torch.Tensor
+        self, fpn_map: torch.Tensor, anchor_heights: torch.Tensor, anchor_widths: torch.Tensor, gt_bboxes: torch.Tensor,
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
@@ -47,7 +50,7 @@ class FasterRCNN(nn.Module):
         return super().__call__(fpn_map, anchor_heights, anchor_widths, gt_bboxes)
 
     def forward(
-        self, fpn_map: torch.Tensor, anchor_heights: torch.Tensor, anchor_widths: torch.Tensor, gt_bboxes: torch.Tensor
+        self, fpn_map: torch.Tensor, anchor_heights: torch.Tensor, anchor_widths: torch.Tensor, gt_bboxes: torch.Tensor, 
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
@@ -73,7 +76,7 @@ class FasterRCNN(nn.Module):
 
         rpn_objectness, bbox_offset_volume = self.rpn(fpn_map)  # (b, s, s, 9), (b, s, s, 9, 4)
 
-        rpn_bboxes = BatchBoundingBoxes.from_anchors_and_rpn_bbox_offset_volume(anchor_heights, anchor_widths, bbox_offset_volume, self.image_size)
+        rpn_bboxes = BatchBoundingBoxes.from_anchors_and_rpn_bbox_offset_volume(anchor_heights, anchor_widths, bbox_offset_volume, self.image_size, self.device)
         rpn_objectness = rpn_objectness.reshape(b, -1)  # (b, s*s*9)
 
         # all objectness and bounding boxes from all the fpn maps
@@ -193,7 +196,7 @@ class FasterRCNN(nn.Module):
 
         list_of_bboxes_with_offsets = []
         for image_bboxes, image_bbox_offsets in zip(list_of_picked_bboxes, offsets):
-            image_bboxes_with_offsets = torch.zeros_like(image_bboxes)
+            image_bboxes_with_offsets = torch.zeros_like(image_bboxes, device=self.device)
 
             prev_bboxes_width = image_bboxes[:, 2] - image_bboxes[:, 0]
             prev_bboxes_height = image_bboxes[:, 3] - image_bboxes[:, 1]
@@ -271,7 +274,7 @@ class FasterRCNN(nn.Module):
             list_of_picked_bboxes.append(picked_all_bboxes)
             list_of_picked_bboxes_gt_matches.append(picked_all_bboxes_gt_matches)
 
-            is_foreground = torch.cat([torch.ones_like(random_pos_index), torch.zeros_like(random_neg_index)], dim=0)
+            is_foreground = torch.cat([torch.ones_like(random_pos_index, device=self.device), torch.zeros_like(random_neg_index, device=self.device)], dim=0)
             is_fast_rcnn_pred_foreground.append(is_foreground)
 
         return list_of_picked_bboxes, list_of_picked_bboxes_gt_matches, is_fast_rcnn_pred_foreground
@@ -300,7 +303,7 @@ class FasterRCNN(nn.Module):
             # image_cls_probs: (L_i, num_classes) where L_i is the number of bounding boxes in the image
             # image_bbox_offsets_for_all_classes: (L_i, num_classes, 4)
             num_boxes = image_cls_probs.shape[0]
-            box_idx = torch.arange(num_boxes)
+            box_idx = torch.arange(num_boxes, device=self.device)
             cls = image_cls_probs.argmax(dim=1)  # (L_i)
             bbox_offsets = image_bbox_offsets_for_all_classes[box_idx, cls]  # (L_i, 4)
             assert bbox_offsets.shape == (num_boxes, 4), f"Expected (L_i, 4), got {bbox_offsets.shape}"

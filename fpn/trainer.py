@@ -44,8 +44,8 @@ class Trainer:
         run_manager: RunManager,
         checkpoint_interval: int,
         log_interval: int,
-        device: str,
         *,
+        device: str,
         image_size: tuple[int, int],
         nms_threshold: float,
         num_rpn_rois_to_sample: int = 2000,
@@ -103,6 +103,7 @@ class Trainer:
             rpn_pos_to_neg_ratio=rpn_pos_to_neg_ratio,
             rpn_pos_iou=rpn_pos_iou,
             rpn_neg_iou=rpn_neg_iou,
+            device=device
         )
 
     def __repr__(self) -> str:
@@ -317,6 +318,11 @@ class Trainer:
                 # num_incorrect_background += result_dict["num_incorrect_background"]
                 # num_objects += result_dict["num_objects"]
 
+
+        # doing a safe division here
+        num_predictions = num_predictions if num_predictions != 0 else 1
+        num_objects = num_objects if num_objects != 0 else 1
+        
         # Note: if you average out the loss in the loss function, then you should divide by len(dataloader) here.
 
         # doing a safe division here.

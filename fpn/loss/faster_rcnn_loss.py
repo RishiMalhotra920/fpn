@@ -139,12 +139,13 @@ class FastRCNNLoss(nn.Module):
 
 
 class FasterRCNNLoss(nn.Module):
-    def __init__(self, background_class_idx):
+    def __init__(self, background_class_idx: int, device: str):
         super().__init__()
         self.background_class_idx = background_class_idx
         self.rpn_loss = RPNLoss()
         self.fast_rcnn_loss = FastRCNNLoss(background_class_idx)
         self.metric = YOLOMetrics()
+        self.device = device
 
     def __call__(
         self,
@@ -222,7 +223,6 @@ class FasterRCNNLoss(nn.Module):
         Returns:
             torch.Tensor: FasterRCNN loss
         """
-        device = rpn_objectness_pred[0].device
 
         # for faster_rcnn_cls_pred, faster_rcnn_bbox_pred in zip(fast_rcnn_cls_pred, fast_rcnn_bbox_pred):
         # for pred in range(3):
@@ -255,10 +255,11 @@ class FasterRCNNLoss(nn.Module):
         #     match_iou_threshold,
         # )  # (b, nBB), (b, nBB)
 
-        # TODO 2: what is happening in this zip function??
+        # print('devices', is_fast_rcnn_preds_foreground[0].device, list_of_picked_bboxes_gt_matches[0].device, gt_cls.device)
+        # exit()
         fast_rcnn_cls_gt = [
             (
-                (~is_image_preds_foreground & torch.full_like(is_image_preds_foreground, self.background_class_idx))
+                (~is_image_preds_foreground & torch.full_like(is_image_preds_foreground, self.background_class_idx, device=self.device))
                 + (is_image_preds_foreground & gt_cls[i, is_image_preds_foreground])
             )
             for i, (is_image_preds_foreground, image_picked_bboxes_gt_matches) in enumerate(
@@ -271,7 +272,7 @@ class FasterRCNNLoss(nn.Module):
         for i in range(len(list_of_picked_bboxes_gt_matches)):
             picked_bboxes_gt_matches = list_of_picked_bboxes_gt_matches[i]
             fast_rcnn_bboxes_gt.append(gt_bboxes[i, picked_bboxes_gt_matches])
-            row_indices = torch.arange(len(fast_rcnn_cls_gt[i]))
+            row_indices = torch.arange(len(fast_rcnn_cls_gt[i]), device=self.device)
             max_class_pred_index = fast_rcnn_cls_gt[i]
             fast_rcnn_bboxes_max_class_pred.append(fast_rcnn_bbox_pred[i][row_indices, max_class_pred_index])
 

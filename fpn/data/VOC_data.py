@@ -15,7 +15,7 @@ class CustomVOCDetectionDataset(VOCDetection):
         assert image_set in ["train", "val"]
         super().__init__(root, year="2012", image_set=image_set, transform=None, target_transform=None)
         self.transform = transform
-        self.max_num_bboxes = 20
+        self.max_num_bboxes = 60
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, dict]:
         """get the item at the index
@@ -61,6 +61,7 @@ class CustomVOCDetectionDataset(VOCDetection):
         out_image, bboxes = self.transform(image, tv_bboxes)
 
         cls = torch.tensor(cls_list)
+
 
         padded_bboxes = torch.zeros((self.max_num_bboxes, 4))
         padded_cls = torch.zeros(self.max_num_bboxes, dtype=torch.long)
