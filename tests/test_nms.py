@@ -28,7 +28,7 @@ def test_nms_by_class_multiple_classes():
     # classes
     nms_pred = apply_nms_by_class(pred, iou_threshold=0.5)
 
-    expected_bboxes = [
+    expected_bbox = [
         np.array(
             [
                 [0, 0, 10, 10, 0.9, 0],  # Highest score for class 0
@@ -39,7 +39,7 @@ def test_nms_by_class_multiple_classes():
         )
     ]
 
-    assert np.allclose(nms_pred, expected_bboxes)
+    assert np.allclose(nms_pred, expected_bbox)
 
 
 def test_nms_by_class_empty_input():

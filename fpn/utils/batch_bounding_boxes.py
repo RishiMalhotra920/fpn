@@ -23,9 +23,9 @@ class BatchBoundingBoxes:
             raise ValueError("boxes_tensor must have shape (b, nBB, 4)")
 
         if format == "center":
-            self._bboxes = self._center_to_corner(boxes_tensor)
+            self._bbox = self._center_to_corner(boxes_tensor)
         else:
-            self._bboxes = boxes_tensor
+            self._bbox = boxes_tensor
 
     @staticmethod
     def _center_to_corner(boxes):
@@ -47,14 +47,14 @@ class BatchBoundingBoxes:
 
     @property
     def corner_format(self):
-        return self._bboxes
+        return self._bbox
 
     @property
     def center_format(self):
-        return self._corner_to_center(self._bboxes)
+        return self._corner_to_center(self._bbox)
 
     @classmethod
-    def from_anchors_and_rpn_bbox_offset_volume(
+    def convert_rpn_bbox_offsets_to_rpn_bbox(
         cls,
         anchor_heights: torch.Tensor,
         anchor_widths: torch.Tensor,
@@ -62,7 +62,7 @@ class BatchBoundingBoxes:
         image_size: tuple[int, int],
         device: str,
     ):
-        """Generate bounding boxes from the anchor boxes and the bounding box offsets.
+        """Takes in rpn bbox offsets and anchor positions and returns the bounding boxes.
 
         Args:
             anchor_heights: tensor of shape (9, ) - heights of the anchor boxes
@@ -96,18 +96,20 @@ class BatchBoundingBoxes:
 
         bounding_boxes_xywh = anchor_with_offset_positions.reshape(b, s * s * 9, 4)
 
-        return cls(bounding_boxes_xywh, format="center")
+        bounding_boxes_xyxy = cls(bounding_boxes_xywh, format="center")
+
+        return bounding_boxes_xyxy
 
     # @classmethod
-    # def from_bounding_boxes_and_offsets(cls, batch_bboxes: BatchBoundingBoxes, offsets: torch.Tensor) -> BatchBoundingBoxes:
+    # def from_bounding_boxes_and_offsets(cls, batch_bbox: BatchBoundingBoxes, offsets: torch.Tensor) -> BatchBoundingBoxes:
     #     """Given bounding boxes and offsets, adjust the bounding boxes.
 
     #     Args:
-    #         bboxes (BatchBoundingBoxes): bounding boxes
+    #         bbox (BatchBoundingBoxes): bounding boxes
     #         offsets (torch.Tensor): offsets to adjust the bounding boxes with shape (b, nBB, 4)
     #     """
 
-    #     prev_boxes = batch_bboxes.corner_format
+    #     prev_boxes = batch_bbox.corner_format
 
     #     prev_boxes_width = prev_boxes[:, :, 2] - prev_boxes[:, :, 0]
     #     prev_boxes_height = prev_boxes[:, :, 3] - prev_boxes[:, :, 1]

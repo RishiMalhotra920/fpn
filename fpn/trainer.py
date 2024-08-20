@@ -103,7 +103,7 @@ class Trainer:
             rpn_pos_to_neg_ratio=rpn_pos_to_neg_ratio,
             rpn_pos_iou=rpn_pos_iou,
             rpn_neg_iou=rpn_neg_iou,
-            device=device
+            device=device,
         )
 
     def __repr__(self) -> str:
@@ -130,14 +130,14 @@ class Trainer:
         num_predictions = 0
         num_objects = 0  # number of objects in the batch
 
-        for batch, (image, gt_cls, gt_bboxes, num_gt_bboxes_in_each_image, metadata) in tqdm(
+        for batch, (image, raw_cls_gt, raw_bbox_gt, num_gt_bbox_in_each_image, metadata) in tqdm(
             enumerate(self.train_dataloader), total=len(self.train_dataloader), desc="Train Step", leave=False
         ):
-            image, gt_cls, gt_bboxes = image.to(self.device), gt_cls.to(self.device), gt_bboxes.to(self.device)
-            image, gt_cls, gt_bboxes = cast(torch.Tensor, image), cast(torch.Tensor, gt_cls), cast(torch.Tensor, gt_bboxes)
+            image, raw_cls_gt, raw_bbox_gt = image.to(self.device), raw_cls_gt.to(self.device), raw_bbox_gt.to(self.device)
+            image, raw_cls_gt, raw_bbox_gt = cast(torch.Tensor, image), cast(torch.Tensor, raw_cls_gt), cast(torch.Tensor, raw_bbox_gt)
 
             # gt_cls: (B, gt_cls)
-            # gt_bboxes: (B, gt_cls, 4)
+            # gt_bbox: (B, gt_cls, 4)
 
             fpn_maps = self.backbone(image)
 
@@ -146,31 +146,31 @@ class Trainer:
             for fpn_map, anchor_heights, anchor_widths in zip(fpn_maps, self.all_anchor_heights, self.all_anchor_widths):
                 (
                     rpn_objectness_pred,
-                    rpn_bboxes_pred,
-                    is_rpn_pred_foreground,
-                    rpn_bbox_matches,
+                    rpn_bbox_pred,
+                    rpn_objectness_gt,
+                    rpn_cls_gt,
                     fast_rcnn_cls_pred,
-                    fast_rcnn_bboxes_pred,
-                    list_of_picked_bboxes_gt_matches,
+                    fast_rcnn_bbox_pred,
+                    list_of_picked_bbox_gt_matches,
                     fast_rcnn_cls_targets,  # this is actually the label...
-                ) = self.model(fpn_map, anchor_heights, anchor_widths, gt_bboxes)
+                ) = self.model(fpn_map, anchor_heights, anchor_widths, raw_bbox_gt)
 
                 # fast_rcnn_cls_pred: tuple[]
                 loss_dict = self.loss_fn(
                     rpn_objectness_pred,
-                    rpn_bboxes_pred,
-                    is_rpn_pred_foreground,
-                    rpn_bbox_matches,
-                    # RPN_BBOX_ANCHOR.expand_as(rpn_bboxes_pred),
+                    rpn_bbox_pred,
+                    rpn_objectness_gt,  # TODO: rename in function
+                    rpn_cls_gt,  # TODO: rename in function
+                    # RPN_BBOX_ANCHOR.expand_as(rpn_bbox_pred),
                     # foreground_objectness_pred,
-                    # foreground_bboxes_pred,
+                    # foreground_bbox_pred,
                     fast_rcnn_cls_pred,
-                    fast_rcnn_bboxes_pred,
-                    list_of_picked_bboxes_gt_matches,
+                    fast_rcnn_bbox_pred,
+                    list_of_picked_bbox_gt_matches,
                     fast_rcnn_cls_targets,
-                    gt_cls,
-                    gt_bboxes,
-                    # num_gt_bboxes_in_each_image,
+                    raw_cls_gt,
+                    raw_bbox_gt,
+                    # num_gt_bbox_in_each_image,
                 )
 
                 rpn_objectness_loss += loss_dict["rpn_objectness_loss"].item()
@@ -188,7 +188,7 @@ class Trainer:
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             self.optimizer.step()
 
-            # result_dict = self.metric.compute_values(fast_rcnn_cls_pred, fast_rcnn_bboxes_pred, gt_cls, gt_bboxes)
+            # result_dict = self.metric.compute_values(fast_rcnn_cls_pred, fast_rcnn_bbox_pred, gt_cls, gt_bbox)
 
             # num_correct += result_dict["num_correct"]
             # num_incorrect_localization += result_dict["num_incorrect_localization"]
@@ -256,45 +256,45 @@ class Trainer:
         num_objects = 0
 
         with torch.inference_mode():
-            for batch, (image, gt_cls, gt_bboxes, num_gt_bboxes_in_each_image, metadata) in tqdm(
+            for batch, (image, gt_cls, gt_bbox, num_gt_bbox_in_each_image, metadata) in tqdm(
                 enumerate(self.train_dataloader), total=len(self.val_dataloader), desc="Test Step", leave=False
             ):
-                image, gt_cls, gt_bboxes = image.to(self.device), gt_cls.to(self.device), gt_bboxes.to(self.device)
-                image, gt_cls, gt_bboxes = cast(torch.Tensor, image), cast(torch.Tensor, gt_cls), cast(torch.Tensor, gt_bboxes)
+                image, gt_cls, gt_bbox = image.to(self.device), gt_cls.to(self.device), gt_bbox.to(self.device)
+                image, gt_cls, gt_bbox = cast(torch.Tensor, image), cast(torch.Tensor, gt_cls), cast(torch.Tensor, gt_bbox)
 
                 # gt_cls: (B, gt_cls)
-                # gt_bboxes: (B, gt_cls, 4)
+                # gt_bbox: (B, gt_cls, 4)
 
                 fpn_maps = self.backbone(image)
 
                 for fpn_map, anchor_heights, anchor_widths in zip(fpn_maps, self.all_anchor_heights, self.all_anchor_widths):
                     (
                         rpn_objectness_pred,
-                        rpn_bboxes_pred,
+                        rpn_bbox_pred,
                         is_rpn_pred_foreground,
                         rpn_bbox_matches,
                         fast_rcnn_cls_pred,
-                        fast_rcnn_bboxes_pred,
-                        list_of_picked_bboxes_gt_matches,
+                        fast_rcnn_bbox_pred,
+                        list_of_picked_bbox_gt_matches,
                         fast_rcnn_cls_targets,  # this is actually the label...
-                    ) = self.model(fpn_map, anchor_heights, anchor_widths, gt_bboxes)
+                    ) = self.model(fpn_map, anchor_heights, anchor_widths, gt_bbox)
 
                     # fast_rcnn_cls_pred: tuple[]
                     loss_dict = self.loss_fn(
                         rpn_objectness_pred,
-                        rpn_bboxes_pred,
+                        rpn_bbox_pred,
                         is_rpn_pred_foreground,
                         rpn_bbox_matches,
-                        # RPN_BBOX_ANCHOR.expand_as(rpn_bboxes_pred),
+                        # RPN_BBOX_ANCHOR.expand_as(rpn_bbox_pred),
                         # foreground_objectness_pred,
-                        # foreground_bboxes_pred,
+                        # foreground_bbox_pred,
                         fast_rcnn_cls_pred,
-                        fast_rcnn_bboxes_pred,
-                        list_of_picked_bboxes_gt_matches,
+                        fast_rcnn_bbox_pred,
+                        list_of_picked_bbox_gt_matches,
                         fast_rcnn_cls_targets,
                         gt_cls,
-                        gt_bboxes,
-                        # num_gt_bboxes_in_each_image,
+                        gt_bbox,
+                        # num_gt_bbox_in_each_image,
                     )
 
                     rpn_objectness_loss += loss_dict["rpn_objectness_loss"].item()
@@ -307,9 +307,9 @@ class Trainer:
 
                 # result_dict = self.metric.compute_values(
                 #     fast_rcnn_cls_pred.detach().cpu().numpy(),
-                #     fast_rcnn_bboxes_pred.detach().cpu().numpy(),
+                #     fast_rcnn_bbox_pred.detach().cpu().numpy(),
                 #     gt_cls.detach().cpu().numpy(),
-                #     gt_bboxes.detach().cpu().numpy(),
+                #     gt_bbox.detach().cpu().numpy(),
                 # )
 
                 # num_correct += result_dict["num_correct"]
@@ -318,11 +318,10 @@ class Trainer:
                 # num_incorrect_background += result_dict["num_incorrect_background"]
                 # num_objects += result_dict["num_objects"]
 
-
         # doing a safe division here
         num_predictions = num_predictions if num_predictions != 0 else 1
         num_objects = num_objects if num_objects != 0 else 1
-        
+
         # Note: if you average out the loss in the loss function, then you should divide by len(dataloader) here.
 
         # doing a safe division here.

@@ -16,7 +16,7 @@ class RPN(nn.Module):
 
     """
 
-    def __init__(self, in_channels: torch.Tensor, num_anchor_scales: torch.Tensor, num_anchor_ratios: torch.Tensor, device: str):
+    def __init__(self, in_channels: int, num_anchor_scales: int, num_anchor_ratios: int, device: str):
         super().__init__()
         self.num_anchor_scales = num_anchor_scales
         self.num_anchor_ratios = num_anchor_ratios
@@ -24,6 +24,7 @@ class RPN(nn.Module):
         self.cls_layer = nn.Conv2d(512, num_anchor_scales * num_anchor_ratios, kernel_size=1)
         self.bbox_layer = nn.Conv2d(512, num_anchor_scales * num_anchor_ratios * 4, kernel_size=1)
         self.device = device
+        self.num_anchors
 
     def __call__(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         return super().__call__(x)
@@ -41,6 +42,6 @@ class RPN(nn.Module):
         b = x.shape[0]
         s = x.shape[2]
         x = F.relu(self.conv1(x))  # (b, 512, s, s)
-        cls = self.cls_layer(x).reshape(b, s, s, 9)  # (b, 9, s, s) -> (b, s, s, 9)
-        bbox = self.bbox_layer(x).reshape(b, s, s, 9, 4)  # (b, 9, s, s, 4) -> (b, s, s, 9, 4)
-        return cls, bbox
+        rpn_objectness_pred = F.sigmoid(self.cls_layer(x).reshape(b, s, s, 9))  # (b, 9, s, s) -> (b, s, s, 9)
+        rpn_bbox_offset_volume_pred = self.bbox_layer(x).reshape(b, s, s, 9, 4)  # (b, 9, s, s, 4) -> (b, s, s, 9, 4)
+        return rpn_objectness_pred, rpn_bbox_offset_volume_pred

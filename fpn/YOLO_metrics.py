@@ -12,17 +12,17 @@ class YOLOMetrics:
     def compute_values(
         self,
         fast_rcnn_cls_pred: list[torch.Tensor],
-        fast_rcnn_bboxes_pred: list[torch.Tensor],
+        fast_rcnn_bbox_pred: list[torch.Tensor],
         fast_rcnn_cls_gt: torch.Tensor,
-        fast_rcnn_bboxes_gt: torch.Tensor,
+        fast_rcnn_bbox_gt: torch.Tensor,
     ) -> dict:
         """Computes YOLO percent correctness according to the YOLOv1 paper."""
 
-        total_correct, total_localization, total_other, total_background, total_pred_bboxes = 0, 0, 0, 0, 0
+        total_correct, total_localization, total_other, total_background, total_pred_bbox = 0, 0, 0, 0, 0
 
         # EFF: not efficient but works
-        pred = np.concatenate((fast_rcnn_cls_pred, fast_rcnn_bboxes_pred), axis=1)
-        gt = np.concatenate((fast_rcnn_cls_gt, fast_rcnn_bboxes_gt), axis=1)
+        pred = np.concatenate((fast_rcnn_cls_pred, fast_rcnn_bbox_pred), axis=1)
+        gt = np.concatenate((fast_rcnn_cls_gt, fast_rcnn_bbox_gt), axis=1)
 
         # EFF: not efficient to for loop over images but works...
         for image_idx in range(len(pred)):
@@ -34,22 +34,20 @@ class YOLOMetrics:
                 continue
             else:
                 print("trace 0")
-                correct, localization, other, background, total_pred_bboxes_in_image = self._get_yolo_metrics_from_boxes_in_image(
-                    pred_image, gt_image
-                )
+                correct, localization, other, background, total_pred_bbox_in_image = self._get_yolo_metrics_from_boxes_in_image(pred_image, gt_image)
                 print("correct are", correct)
                 total_correct += correct
                 total_localization += localization
                 total_other += other
                 total_background += background
-                total_pred_bboxes += total_pred_bboxes_in_image
+                total_pred_bbox += total_pred_bbox_in_image
 
         return {
             "num_correct": total_correct,
             "num_incorrect_localization": total_localization,
             "num_incorrect_other": total_other,
             "num_incorrect_background": total_background,
-            "num_objects": total_pred_bboxes,
+            "num_objects": total_pred_bbox,
         }
 
     def _get_yolo_metrics_from_boxes_in_image(self, pred_image: np.ndarray, gt_image: np.ndarray) -> tuple[int, int, int, int, int]:

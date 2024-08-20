@@ -45,7 +45,7 @@ class FastRCNNClassifier(nn.Module):
         assert x.shape[1] == 256, f"Expected 256 channels, got {x.shape[1]} channels"
         # the roi align layer takes in a batch of feature maps and a list of RoIs and
         # does the RoI pooling per image correctly but returns a single tensor with all the pooled RoIs.
-        num_bboxes_per_image = [roi.shape[0] for roi in rois]
+        num_bbox_per_image = [roi.shape[0] for roi in rois]
         x = self.roi_align(x, rois)  # (total_num_rois, 256, 7, 7)
         x = self.bn_after_roi_pool(x)  # (total_num_rois, 256, 7, 7)
         x = x.view(x.size(0), -1)  # (total_num_rois, 256*7*7)
@@ -54,9 +54,9 @@ class FastRCNNClassifier(nn.Module):
         x = F.relu(self.bn2(self.fc2(x)))  # (total_num_rois, 1024)
         x = self.dropout(x)
         cls = F.softmax(self.cls(x), dim=1)  # (total_num_rois, num_classes)
-        bboxes = self.bbox_layer(x)  # (total_num_rois, num_classes * 4)
-        bboxes = bboxes.view(-1, cls.shape[1], 4)  # (b, num_rois, num_classes, 4)
-        list_of_cls = list(torch.split(cls, num_bboxes_per_image))  # tuple[(num_rois, num_classes)]
-        list_of_bboxes = list(torch.split(bboxes, num_bboxes_per_image))  # tuple[(num_rois, num_classes, 4)]
+        bbox = self.bbox_layer(x)  # (total_num_rois, num_classes * 4)
+        bbox = bbox.view(-1, cls.shape[1], 4)  # (b, num_rois, num_classes, 4)
+        list_of_cls = list(torch.split(cls, num_bbox_per_image))  # tuple[(num_rois, num_classes)]
+        list_of_bbox = list(torch.split(bbox, num_bbox_per_image))  # tuple[(num_rois, num_classes, 4)]
 
-        return list_of_cls, list_of_bboxes  # list[(num_rois, num_classes)], list[(num_rois, num_classes, 4)]
+        return list_of_cls, list_of_bbox  # list[(num_rois, num_classes)], list[(num_rois, num_classes, 4)]
