@@ -31,6 +31,7 @@ class FasterRCNN(nn.Module):
         self.rpn_neg_iou = rpn_neg_iou
         self.match_iou_threshold = match_iou_threshold
 
+        # these changes 2 
         self.rpn = RPN(in_channels=256, num_anchor_scales=3, num_anchor_ratios=3, device=device)
         self.fast_rcnn_classifier = FastRCNNClassifier(num_classes=21)
         self.device = device
