@@ -56,6 +56,17 @@ class RPNLoss(nn.Module):
 
         objectness_loss = F.binary_cross_entropy_with_logits(objectness_pred, objectness_gt, reduction="mean")
         # filter out the background anchor bboxes
+
+
+        assert not torch.isnan(objectness_pred).any(), "NaN found in objectness_pred"
+        assert not torch.isnan(bbox_pred).any(), "NaN found in bbox_pred"
+        assert not torch.isnan(objectness_gt).any(), "NaN found in objectness_gt"
+        assert not torch.isnan(bbox_gt).any(), "NaN found in bbox_gt"
+
+        assert not torch.isinf(objectness_pred).any(), "Inf found in objectness_pred"
+        assert not torch.isinf(bbox_pred).any(), "Inf found in bbox_pred"
+        assert not torch.isinf(objectness_gt).any(), "Inf found in objectness_gt"
+        assert not torch.isinf(bbox_gt).any(), "Inf found in bbox_gt"
         filtered_bbox_pred = bbox_pred[objectness_gt == 1]  # (b, num_gt_objectness, 4)
         filtered_bbox_gt = bbox_gt[objectness_gt == 1]  # (b, num_gt_objectness, 4)
         bbox_loss = F.smooth_l1_loss(filtered_bbox_pred, filtered_bbox_gt, reduction="sum")
@@ -274,6 +285,19 @@ class FasterRCNNLoss(nn.Module):
             fast_rcnn_bboxes_gt.append(gt_bboxes[i, picked_bboxes_gt_matches])
             row_indices = torch.arange(len(fast_rcnn_cls_gt[i]), device=self.device)
             max_class_pred_index = fast_rcnn_cls_gt[i]
+            print(f"Image {i}:")
+            print(list(max_class_pred_index))
+            print(f"  fast_rcnn_bbox_pred[i] shape: {fast_rcnn_bbox_pred[i].shape}")
+            print(f"  row_indices shape: {row_indices.shape}")
+            print(f"  max_class_pred_index shape: {max_class_pred_index.shape}")
+            print(f"  row_indices max: {row_indices.max().item()}")
+            print(f"  max_class_pred_index max: {max_class_pred_index.max().item()}")
+            print(f"  fast_rcnn_cls_gt[i] unique values: {fast_rcnn_cls_gt[i].unique()}")
+            
+            # Check if indices are within bounds
+            assert row_indices.max() < fast_rcnn_bbox_pred[i].shape[0], "row_indices out of bounds"
+            assert max_class_pred_index.max() < fast_rcnn_bbox_pred[i].shape[1], "max_class_pred_index out of bounds"
+        
             fast_rcnn_bboxes_max_class_pred.append(fast_rcnn_bbox_pred[i][row_indices, max_class_pred_index])
 
         # fast_rcnn_bboxes_gt = [gt_bboxes[i, picked_bboxes_gt_matches] for i, picked_bboxes_gt_matches in enumerate(list_of_picked_bboxes_gt_matches)]
