@@ -41,7 +41,8 @@ class FasterRCNN(nn.Module):
         fpn_map: torch.Tensor,
         anchor_heights: torch.Tensor,
         anchor_widths: torch.Tensor,
-        gt_bbox: torch.Tensor,
+        raw_cls_gt: torch.Tensor,
+        raw_bbox_gt: torch.Tensor,
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
@@ -52,13 +53,14 @@ class FasterRCNN(nn.Module):
         list[torch.Tensor],
         list[torch.Tensor],
     ]:
-        return super().__call__(fpn_map, anchor_heights, anchor_widths, gt_bbox)
+        return super().__call__(fpn_map, anchor_heights, anchor_widths, raw_cls_gt, raw_bbox_gt)
 
     def forward(
         self,
         fpn_map: torch.Tensor,
         anchor_heights: torch.Tensor,
         anchor_widths: torch.Tensor,
+        raw_cls_gt: torch.Tensor,
         raw_bbox_gt: torch.Tensor,
     ) -> tuple[
         torch.Tensor,
@@ -92,52 +94,76 @@ class FasterRCNN(nn.Module):
         rpn_objectness_pred = rpn_objectness_pred.reshape(b, -1)  # (b, n_a*s*s)
 
         # should do this matching with anchors btw for stability.
-        rpn_objectness_gt, rpn_gt_index_match_for_rpn_bbox_pred = self.extract_rpn_objectness_and_rpn_gt_index_match_for_bbox_pred(
-            rpn_bbox_pred, raw_bbox_gt, self.match_iou_threshold
+        # get rpn_bbox_gt from here as well.
+        rpn_objectness_gt, rpn_cls_gt, rpn_bbox_gt = self.extract_rpn_objectness_and_rpn_gt_index_match_for_rpn_bbox_pred(
+            rpn_bbox_pred, raw_cls_gt, raw_bbox_gt, self.match_iou_threshold
         )
 
         # TODO: note that rpn_objectness_gt and rpn_gt_index_match_for_bbox_pred and rpn_bbox_gt
         # can all be made into one big tensor very easily. see TODO optim1
-        rpn_bbox_gt = [raw_bbox_gt[i, rpn_gt_index_match_for_bbox_pred[i]] for i in range(len(rpn_objectness_gt))]
 
-        # TODO: difference between the latter two variables???
-        list_of_picked_bbox, list_of_picked_bbox_gt_matches, is_fast_rcnn_pred_foreground = self.pick_fg_and_bg_objectness_and_bbox(
+        (
+            rpn_bbox_pred_nms_fg_and_bg_some,
+            fast_rcnn_cls_gt_nms_fg_and_bg_some,
+            fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+        ) = self.pick_fg_and_bg_objectness_and_bbox(
             rpn_objectness_pred,
             rpn_bbox_pred,
             # rpn_objectness_gt,
-            rpn_gt_index_match_for_rpn_bbox_pred,
+            rpn_cls_gt,  # TODO: or rpn_cls_gt?
+            rpn_bbox_gt,  # TODO: or rpn_bbox_gt?
             k=self.num_rpn_rois_to_sample,
             pos_to_neg_ratio=self.rpn_pos_to_neg_ratio,
             pos_iou=self.rpn_pos_iou,
             neg_iou=self.rpn_neg_iou,
         )
 
+        # TODO: this function should not return any list_of variables.
+        # it should only return the preds and gts for both faster rcnn
+        # and rpn, greatly simplifying the code.
+
         # pass to the fast rcnn classifier
-        cls_probs, bbox_offsets_for_all_classes = self.fast_rcnn_classifier(fpn_map, list_of_picked_bbox)  # list[torch.Tensor()], list[torch.Tensor]
+        # TODO: ensure that offsets for only the gt class are returned!
+        fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox, fast_rcnn_bbox_offsets_for_all_classes_for_some_rpn_bbox = self.fast_rcnn_classifier(
+            fpn_map, rpn_bbox_pred_nms_fg_and_bg_some
+        )  # list[(num_rois, num_classes)], list[(num_rois, num_classes, 4)]
 
-        # # for each bbox, pick the class with the highest softmax score and use the corresponding bounding box
-        # fast_rcnn_cls, bbox_offsets = self._pick_top_class_and_bbox_offsets(
-        #     cls_probs, bbox_offsets_for_all_classes
-        # )  # list[b, torch.Tensor(L_i, num_classes)], list[b, torch.Tensor(L_i, num_classes, 4)]
-
-        # fast_rcnn_bbox = BatchBoundingBoxes.from_bounding_boxes_and_offsets(list_of_picked_bbox, bbox_offsets)
-        # list_of_bbox_with_offsets = self.apply_offsets_to_fast_rcnn_bbox(list_of_picked_bbox, bbox_offsets)
-
-        # torch.Tensor(b, 3*s*s*9), BatchBoundingBoxes(b, 3*s*s*9, 4), list[torch.Tensor(b, L_i)], list[torch.Tensor(b, L_i, 4)] where L_i is the number of picked bounding boxes in image i
-        return (
-            rpn_objectness,
-            rpn_bbox.corner_format,
-            is_rpn_pred_foreground,
-            rpn_bbox_matches,
-            cls_probs,
-            bbox_offsets_for_all_classes,
-            list_of_picked_bbox_gt_matches,
-            is_fast_rcnn_pred_foreground,
+        fast_rcnn_bbox_offsets_for_gt_class_for_some_rpn_bbox = self.get_fast_rcnn_bbox_offsets_for_gt_class(
+            fast_rcnn_cls_gt_nms_fg_and_bg_some, fast_rcnn_bbox_offsets_for_all_classes_for_some_rpn_bbox
         )
 
+        # fast_rcnn_bbox = BatchBoundingBoxes.from_bounding_boxes_and_offsets(list_of_picked_bbox, bbox_offsets)
+        fast_rcnn_bbox_pred_for_some_rpn_bbox = self.apply_offsets_to_fast_rcnn_bbox(
+            rpn_bbox_pred_nms_fg_and_bg_some, fast_rcnn_bbox_offsets_for_gt_class_for_some_rpn_bbox
+        )
+
+        return (
+            rpn_objectness_pred,
+            rpn_bbox_pred,
+            fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
+            fast_rcnn_bbox_pred_for_some_rpn_bbox,
+            rpn_objectness_gt,
+            rpn_bbox_gt,
+            fast_rcnn_cls_gt_nms_fg_and_bg_some,
+            fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+        )
+
+    def get_fast_rcnn_bbox_offsets_for_gt_class(
+        self, fast_rcnn_cls_gt_nms_fg_and_bg_some: list[torch.Tensor], fast_rcnn_bbox_offsets_for_all_classes: list[torch.Tensor]
+    ):
+        fast_rcnn_bbox_offsets_for_gt_class = []
+        for fast_rcnn_image_bbox_offsets_for_all_classes, fast_rcnn_image_cls_gt_nms_fg_and_bg_some in zip(
+            fast_rcnn_bbox_offsets_for_all_classes, fast_rcnn_cls_gt_nms_fg_and_bg_some
+        ):
+            # fast_rcnn_image_bbox_offsets_for_all_classes: (L_i, num_classes, 4)
+            # fast_rcnn_image_cls_gt_nms_fg_and_bg_some: (L_i)
+            fast_rcnn_image_bbox_offsets_for_gt_class = fast_rcnn_image_bbox_offsets_for_all_classes[:, fast_rcnn_image_cls_gt_nms_fg_and_bg_some, :]
+            fast_rcnn_bbox_offsets_for_gt_class.append(fast_rcnn_image_bbox_offsets_for_gt_class)
+        return fast_rcnn_bbox_offsets_for_gt_class
+
     def extract_rpn_objectness_and_rpn_gt_index_match_for_rpn_bbox_pred(
-        self, rpn_bbox_pred: torch.Tensor, raw_bbox_gt: torch.Tensor, iou_threshold: float
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+        self, rpn_bbox_pred: torch.Tensor, raw_cls_gt: torch.Tensor, raw_bbox_gt: torch.Tensor, iou_threshold: float
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
         """Match the pred bbox to the gt bbox based on the IOU and return if the pred bbox are foreground or not.
 
         Here's what's happening:
@@ -157,9 +183,10 @@ class FasterRCNN(nn.Module):
         Returns:
             torch.Tensor: matched indices of shape (b, nBB)
         """
-
+        # TODO: ensure the only for loop should be in this function.
+        rpn_cls_gt = []
+        rpn_bbox_gt = []
         rpn_objectness_gt = []
-        rpn_gt_index_match_for_rpn_bbox_pred = []
         b = len(rpn_bbox_pred)
 
         for image_idx in range(b):
@@ -170,23 +197,19 @@ class FasterRCNN(nn.Module):
 
             best_iou, best_gt_index = torch.max(ious, dim=1)  # (z_i)
             is_foreground = best_iou > iou_threshold  # (z_i)
+            # image_cls_gt = torch.full_like(best_gt_index, self.background_class_idx, device=self.device)
+            # image_cls_gt[is_foreground] = raw_cls_gt[image_idx][best_gt_index[is_foreground]]
+
+            image_cls_gt = torch.where(
+                is_foreground, raw_cls_gt[image_idx][best_gt_index], torch.full_like(best_gt_index, self.background_class_idx, device=self.device)
+            )
+            image_bbox_gt = raw_bbox_gt[image_idx][best_gt_index]  # (z_i, 4)
 
             rpn_objectness_gt.append(is_foreground)
-            rpn_gt_index_match_for_rpn_bbox_pred.append(best_gt_index)
+            rpn_cls_gt.append(image_cls_gt)
+            rpn_bbox_gt.append(image_bbox_gt)
 
-            # assert image.shape[0] == gt_bbox
-
-        # best_iou looks like
-        # [[0.1, 0.2, 0.3, 0.4],
-        #  [0.5, 0.6, 0.7, 0.8]]
-        # best_gt_index looks like
-        # [[0, 1, 2, 3],
-        #  [0, 1, 2, 3]]
-        # is_foreground looks like
-        # [[False, False, False, True],
-        #  [True, True, True, True]]
-        # TODO optim1: make this one big tensor by torch.tensor(...)
-        return rpn_objectness_gt, rpn_gt_index_match_for_rpn_bbox_pred
+        return rpn_objectness_gt, rpn_cls_gt, rpn_bbox_gt
 
     def apply_offsets_to_fast_rcnn_bbox(self, list_of_picked_bbox: list[torch.Tensor], offsets: list[torch.Tensor]) -> list[torch.Tensor]:
         """Apply the bounding box regression offsets to the bounding boxes.
@@ -219,7 +242,8 @@ class FasterRCNN(nn.Module):
         self,
         rpn_objectness_pred: torch.Tensor,
         rpn_bbox_pred: torch.Tensor,
-        rpn_gt_index_match_for_rpn_bbox_pred: list[torch.Tensor],
+        rpn_cls_gt: list[torch.Tensor],
+        rpn_bbox_gt: list[torch.Tensor],
         *,
         k: int,
         pos_to_neg_ratio: float,
@@ -242,89 +266,57 @@ class FasterRCNN(nn.Module):
         (b, _) = rpn_objectness_pred.shape
 
         list_of_rpn_bbox_pred_nms_fg_and_bg_some = []
-        list_of_rpn_gt_index_match_for_rpn_bbox_pred_nms_fg_and_bg_some = []
-        is_fast_rcnn_pred_foreground = []
+        list_of_fast_rcnn_cls_gt_nms_fg_and_bg_some = []
+        list_of_fast_rcnn_bbox_gt_nms_fg_and_bg_some = []
 
         for image_idx in range(rpn_bbox_pred.shape[0]):
             # rpn_bbox_pred_nms_indices - these are the indices of the boxes that are kept after nms
             rpn_bbox_pred_nms_indices = torchvision.ops.nms(rpn_bbox_pred[image_idx], rpn_objectness_pred[image_idx], self.nms_threshold)
-            rpn_gt_index_match_for_rpn_bbox_pred_nms = rpn_gt_index_match_for_rpn_bbox_pred[image_idx][rpn_bbox_pred_nms_indices]  # (#nms_boxes)
             rpn_bbox_pred_nms = rpn_bbox_pred[image_idx][rpn_bbox_pred_nms_indices]  # (#nms_boxes, 4)
             rpn_objectness_pred_nms = rpn_objectness_pred[image_idx][rpn_bbox_pred_nms_indices]  # (#nms_boxes)
+            raw_fast_rcnn_cls_gt_nms = rpn_cls_gt[image_idx][rpn_bbox_pred_nms_indices]  # (#nms_boxes)
+            raw_fast_rcnn_bbox_gt_nms = rpn_bbox_gt[image_idx][rpn_bbox_pred_nms_indices]  # (#nms_boxes, 4)
 
-            # is_predicted_background = rpn_objectness_pred_nms < neg_iou  # (#background predicted boxes)
             is_rpn_pred_fg = rpn_objectness_pred_nms > pos_iou  # (#foreground predicted boxes)
 
-            # select background
-            rpn_bbox_pred_nms_bg = rpn_bbox_pred_nms[~is_rpn_pred_fg]  # (#background predicted boxes, 4)
-            rpn_gt_index_match_for_rpn_bbox_pred_nms_bg = rpn_gt_index_match_for_rpn_bbox_pred_nms[~is_rpn_pred_fg]  # (#background predicted boxes)
-            rpn_bbox_pred_nms_fg = rpn_bbox_pred_nms[is_rpn_pred_fg]  # (#foreground predicted boxes, 4)
-            rpn_gt_index_match_for_rpn_bbox_pred_nms_fg = rpn_gt_index_match_for_rpn_bbox_pred_nms[is_rpn_pred_fg]  # (#foreground predicted boxes)
-
-            # select some of rpn_bbox_pred_nms_bg based on the ratios
-            num_bg_bbox = rpn_bbox_pred_nms_bg.shape[0]
+            # pick some random bg bboxes
+            num_bg_bbox = (~is_rpn_pred_fg).sum().item()
             random_neg_index = torch.randperm(int(min(num_bg_bbox, k) * (1 - pos_to_neg_ratio)), device=self.device)  # eg: [3, 1, 2, 0, ... 891]
-            rpn_bbox_pred_nms_bg_some = rpn_bbox_pred_nms_bg[random_neg_index, :]  # (b, some, 4)
-            rpn_gt_index_match_for_rpn_bbox_pred_nms_bg_some = rpn_gt_index_match_for_rpn_bbox_pred_nms_bg[random_neg_index]  # (b, some)
+            rpn_bbox_pred_nms_bg_some = rpn_bbox_pred_nms[~is_rpn_pred_fg][random_neg_index, :]  # (b, some, 4)
+            raw_fast_rcnn_cls_gt_nms_bg_some = raw_fast_rcnn_cls_gt_nms[~is_rpn_pred_fg][random_neg_index]  # (b, some)
+            raw_fast_rcnn_bbox_gt_nms_bg_some = raw_fast_rcnn_bbox_gt_nms[~is_rpn_pred_fg][random_neg_index, :]  # (b, some, 4)
 
-            # select some of rpn_bbox_pred_nms_bg based on the ratios
-            num_fg_bbox = rpn_bbox_pred_nms_fg.shape[0]
-            random_pos_index = torch.randperm(
-                int(min(num_fg_bbox, k) * pos_to_neg_ratio), device=self.device
-            )  # (k*pos_to_neg_ratio) eg: [3, 1, 2, 0, ... 891]
-            rpn_bbox_pred_nms_fg_some = rpn_bbox_pred_nms_fg[random_pos_index, :]  # (b, min(num_foreground_bbox, k) * pos_to_neg_ratio, 4)
-            rpn_gt_index_match_for_rpn_bbox_pred_nms_fg_some = rpn_gt_index_match_for_rpn_bbox_pred_nms_fg[
-                random_pos_index
-            ]  # (b, min(num_foreground_bbox, k) * pos_to_neg_ratio)
+            # pick some random fg bboxes
+            num_fg_bbox = is_rpn_pred_fg.sum().item()
+            random_pos_index = torch.randperm(int(min(num_fg_bbox, k) * pos_to_neg_ratio), device=self.device)  # (some) eg: [3, 1, 2, 0, ... 891]
+            rpn_bbox_pred_nms_fg_some = rpn_bbox_pred_nms[is_rpn_pred_fg][random_pos_index, :]  # (b, some, 4)
+            raw_fast_rcnn_cls_gt_nms_fg_some = raw_fast_rcnn_cls_gt_nms[is_rpn_pred_fg][random_pos_index]  # (b, some)
+            raw_fast_rcnn_bbox_gt_nms_fg_some = raw_fast_rcnn_bbox_gt_nms[is_rpn_pred_fg][random_pos_index, :]  # (b, some, 4)
 
             rpn_bbox_pred_nms_fg_and_bg_some = torch.cat([rpn_bbox_pred_nms_fg_some, rpn_bbox_pred_nms_bg_some], dim=0)  # (b, k, 4)
-            rpn_gt_index_match_for_rpn_bbox_pred_nms_fg_and_bg_some = torch.cat(
-                [rpn_gt_index_match_for_rpn_bbox_pred_nms_fg_some, rpn_gt_index_match_for_rpn_bbox_pred_nms_bg_some], dim=0
-            )  # (b, k)
+            raw_fast_rcnn_cls_gt_nms_fg_and_bg_some = torch.cat([raw_fast_rcnn_cls_gt_nms_fg_some, raw_fast_rcnn_cls_gt_nms_bg_some], dim=0)  # (b, k)
+            raw_fast_rcnn_bbox_gt_nms_fg_and_bg_some = torch.cat(
+                [raw_fast_rcnn_bbox_gt_nms_fg_some, raw_fast_rcnn_bbox_gt_nms_bg_some], dim=0
+            )  # (b, k, 4)
             list_of_rpn_bbox_pred_nms_fg_and_bg_some.append(rpn_bbox_pred_nms_fg_and_bg_some)
-            list_of_rpn_gt_index_match_for_rpn_bbox_pred_nms_fg_and_bg_some.append(rpn_gt_index_match_for_rpn_bbox_pred_nms_fg_and_bg_some)
+            list_of_fast_rcnn_cls_gt_nms_fg_and_bg_some.append(raw_fast_rcnn_cls_gt_nms_fg_and_bg_some)
+            list_of_fast_rcnn_bbox_gt_nms_fg_and_bg_some.append(raw_fast_rcnn_bbox_gt_nms_fg_and_bg_some)
 
-            # TODO: instead of calculating is_
-            is_foreground = torch.cat(
-                [torch.ones_like(random_pos_index, device=self.device), torch.zeros_like(random_neg_index, device=self.device)], dim=0
-            )
+            # # TODO: instead of calculating is_foreground here, calculate
+            # # the fast rcnn targets directly.
+            # fast = raw_cls_gt[image_idx,]
 
-            is_fast_rcnn_pred_foreground.append(is_foreground)
+            # is_foreground = torch.cat(
+            #     [torch.ones_like(random_pos_index, device=self.device), torch.zeros_like(random_neg_index, device=self.device)], dim=0
+            # )
 
-        return list_of_rpn_bbox_pred_nms_fg_and_bg_some, list_of_rpn_gt_index_match_for_rpn_bbox_pred_nms_fg_and_bg_some, is_fast_rcnn_pred_foreground
+            # is_fast_rcnn_pred_foreground.append(is_foreground)
 
-    def _pick_top_class_and_bbox_offsets(
-        self, cls_probs: list[torch.Tensor], bbox_offsets_for_all_classes: list[torch.Tensor]
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
-        """Each image has many bbox. For each bbox, pick the class with the highest softmax score and use the corresponding bbox.
-
-        run this method during inference! but not during training. we dont need to argmax when computing class probs.
-
-        cls_probs[i] and bbox_offsets_for_all_classes[i] are bbox for image i
-
-        Args:
-            cls_probs (list[torch.Tensor]): probability of each class for each bounding box in the batch with list[(L_i, num_classes)]
-            bbox_offsets_for_all_classes (list[torch.Tensor]): bounding box offsets for all classes of shape list[torch.tensor(L_i, num_classes, 4)]
-                where L_i is the number of bounding boxes in image i.
-
-        Returns:
-            tuple[torch.Tensor, torch.Tensor]: class and bounding box offsets for each image in the batch of shape (b, nBB), (b, nBB, 4)
-        """
-
-        all_cls = []
-        all_bbox_offsets = []
-        for image_cls_probs, image_bbox_offsets_for_all_classes in zip(cls_probs, bbox_offsets_for_all_classes):
-            # image_cls_probs: (L_i, num_classes) where L_i is the number of bounding boxes in the image
-            # image_bbox_offsets_for_all_classes: (L_i, num_classes, 4)
-            num_boxes = image_cls_probs.shape[0]
-            box_idx = torch.arange(num_boxes, device=self.device)
-            cls = image_cls_probs.argmax(dim=1)  # (L_i)
-            bbox_offsets = image_bbox_offsets_for_all_classes[box_idx, cls]  # (L_i, 4)
-            assert bbox_offsets.shape == (num_boxes, 4), f"Expected (L_i, 4), got {bbox_offsets.shape}"
-            all_cls.append(cls)
-            all_bbox_offsets.append(bbox_offsets)
-
-        return all_cls, all_bbox_offsets  # list[torch.Tensor(L_i)], list[torch.Tensor(L_i, 4)]
+        return (
+            list_of_rpn_bbox_pred_nms_fg_and_bg_some,
+            list_of_fast_rcnn_cls_gt_nms_fg_and_bg_some,
+            list_of_fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+        )
 
     def predict(self, dataset: Dataset) -> list[np.ndarray]:
         """Given a dataset, predict the output of the model on the dataset.

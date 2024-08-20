@@ -56,7 +56,7 @@ class FastRCNNClassifier(nn.Module):
         cls = F.softmax(self.cls(x), dim=1)  # (total_num_rois, num_classes)
         bbox = self.bbox_layer(x)  # (total_num_rois, num_classes * 4)
         bbox = bbox.view(-1, cls.shape[1], 4)  # (b, num_rois, num_classes, 4)
-        list_of_cls = list(torch.split(cls, num_bbox_per_image))  # tuple[(num_rois, num_classes)]
-        list_of_bbox = list(torch.split(bbox, num_bbox_per_image))  # tuple[(num_rois, num_classes, 4)]
+        list_of_cls = list(torch.split(cls, num_bbox_per_image))  # list[(num_rois, num_classes)]
+        list_of_bbox = list(torch.split(bbox, num_bbox_per_image))  # list[(num_rois, num_classes, 4)]
 
         return list_of_cls, list_of_bbox  # list[(num_rois, num_classes)], list[(num_rois, num_classes, 4)]

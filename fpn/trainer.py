@@ -153,7 +153,7 @@ class Trainer:
                     fast_rcnn_bbox_pred,
                     list_of_picked_bbox_gt_matches,
                     fast_rcnn_cls_targets,  # this is actually the label...
-                ) = self.model(fpn_map, anchor_heights, anchor_widths, raw_bbox_gt)
+                ) = self.model(fpn_map, anchor_heights, anchor_widths, raw_cls_gt, raw_bbox_gt)
 
                 # fast_rcnn_cls_pred: tuple[]
                 loss_dict = self.loss_fn(

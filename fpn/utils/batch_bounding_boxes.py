@@ -99,26 +99,3 @@ class BatchBoundingBoxes:
         bounding_boxes_xyxy = cls(bounding_boxes_xywh, format="center")
 
         return bounding_boxes_xyxy
-
-    # @classmethod
-    # def from_bounding_boxes_and_offsets(cls, batch_bbox: BatchBoundingBoxes, offsets: torch.Tensor) -> BatchBoundingBoxes:
-    #     """Given bounding boxes and offsets, adjust the bounding boxes.
-
-    #     Args:
-    #         bbox (BatchBoundingBoxes): bounding boxes
-    #         offsets (torch.Tensor): offsets to adjust the bounding boxes with shape (b, nBB, 4)
-    #     """
-
-    #     prev_boxes = batch_bbox.corner_format
-
-    #     prev_boxes_width = prev_boxes[:, :, 2] - prev_boxes[:, :, 0]
-    #     prev_boxes_height = prev_boxes[:, :, 3] - prev_boxes[:, :, 1]
-
-    #     new_boxes = torch.zeros_like(prev_boxes)
-
-    #     new_boxes[:, :, 0] = offsets[:, :, 0] * prev_boxes_width + prev_boxes[:, :, 0]  # x1
-    #     new_boxes[:, :, 1] = offsets[:, :, 1] * prev_boxes_height + prev_boxes[:, :, 1]  # y1
-    #     new_boxes[:, :, 2] = new_boxes[:, :, 0] + prev_boxes_width * torch.exp(offsets[:, :, 2])  # x2 = x1 + w
-    #     new_boxes[:, :, 3] = new_boxes[:, :, 1] + prev_boxes_height * torch.exp(offsets[:, :, 3])  # y2 = y1 + h
-
-    #     return cls(new_boxes)
