@@ -7,10 +7,10 @@ from tqdm import tqdm
 
 from fpn.data.VOC_data import CustomVOCDetectionDataset
 from fpn.loss.faster_rcnn_loss import FasterRCNNLoss
+from fpn.metrics.rpn_metrics import calculate_rpn_metrics
 from fpn.models.faster_rcnn import FasterRCNN
 from fpn.models.fpn import FPN
 from fpn.run_manager import RunManager
-from fpn.YOLO_metrics import YOLOMetrics
 
 
 def log_gradients(model: nn.Module) -> None:
@@ -38,7 +38,6 @@ class Trainer:
         lr_scheduler: torch.optim.lr_scheduler.LRScheduler,
         optimizer: torch.optim.Optimizer,
         loss_fn: FasterRCNNLoss,
-        metric: YOLOMetrics,
         epoch_start: int,
         epoch_end: int,
         run_manager: RunManager,
@@ -65,7 +64,7 @@ class Trainer:
         self.checkpoint_interval = checkpoint_interval
         self.log_interval = log_interval
         self.device = device
-        self.metric = metric
+        # self.metric = metric
         self.backbone = backbone
 
         # fpn specific things
@@ -112,6 +111,8 @@ class Trainer:
             device=device,
         )
 
+        self.rpn_recall_iou_thresholds = [0.5, 0.6, 0.7, 0.8, 0.9]
+
     def _get_anchor_positions(self, anchor_widths: torch.Tensor, anchor_heights: torch.Tensor, s: int, image_dim: int) -> torch.Tensor:
         """
         Get anchor positions for the volume in the shape:
@@ -152,6 +153,7 @@ class Trainer:
         faster_rcnn_total_loss = 0.0
         # the first time we log, we log for 11 batches so need num_batches for averaging
         num_batches = 0
+        rpn_recall_iou_metrics = {f"rpn_recall@{t}": 0.0 for t in self.rpn_recall_iou_thresholds}
 
         # num_correct = 0
         # num_incorrect_localization = 0
@@ -170,12 +172,16 @@ class Trainer:
 
             fpn_maps = self.backbone(image)
 
+            # list[num_fpn_maps, list[num_images, tensor(L_i, 4)]]
+            all_rpn_bbox_pred_nms_fg_and_bg_some = []
+
             for fpn_map, anchor_heights, anchor_widths, anchor_positions in zip(
                 fpn_maps, self.all_anchor_heights, self.all_anchor_widths, self.all_anchor_positions
             ):
                 (
                     rpn_objectness_pred,
                     rpn_bbox_offset_pred,
+                    rpn_bbox_pred_nms_fg_and_bg_some,
                     fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
                     fast_rcnn_bbox_offsets_pred,
                     rpn_objectness_gt,
@@ -197,6 +203,11 @@ class Trainer:
                     device=self.device,
                 )
 
+                # concatenate
+                all_rpn_bbox_pred_nms_fg_and_bg_some.append(rpn_bbox_pred_nms_fg_and_bg_some)
+
+                # [torch.cat((a, b), dim=0) for a, b in zip(all_rpn_bbox_pred_nms_fg_and_bg_some, rpn_bbox_offset_gt)]
+
                 rpn_objectness_loss += loss_dict["rpn_objectness_loss"].item()
                 rpn_bbox_loss += loss_dict["rpn_bbox_loss"].item()
                 rpn_total_loss += loss_dict["rpn_total_loss"].item()
@@ -204,8 +215,22 @@ class Trainer:
                 fast_rcnn_bbox_loss += loss_dict["fast_rcnn_bbox_loss"].item()
                 fast_rcnn_total_loss += loss_dict["fast_rcnn_total_loss"].item()
                 faster_rcnn_total_loss += loss_dict["faster_rcnn_total_loss"].item()
+                # divide by 3 because we have 3 fpn maps
 
                 total_faster_rcnn_loss += loss_dict["faster_rcnn_total_loss"]
+
+            # list[num_images, tensor(L_i_fpn_map_1+L_i_fpn_map2+L_i_fpn_map3, 4)]
+            all_rpn_bbox_pred_nms_fg_and_bg_some_per_image = [
+                torch.cat((t1, t2, t3))
+                for t1, t2, t3 in zip(
+                    all_rpn_bbox_pred_nms_fg_and_bg_some[0],
+                    all_rpn_bbox_pred_nms_fg_and_bg_some[1],
+                    all_rpn_bbox_pred_nms_fg_and_bg_some[2],
+                )
+            ]
+
+            rpn_metrics = calculate_rpn_metrics(all_rpn_bbox_pred_nms_fg_and_bg_some_per_image, raw_bbox_gt, self.rpn_recall_iou_thresholds)
+            rpn_recall_iou_metrics = {k: v + rpn_metrics[k] for k, v in rpn_recall_iou_metrics.items()}
 
             num_batches += 1
 
@@ -228,6 +253,7 @@ class Trainer:
 
             if batch != 0 and batch % self.log_interval == 0:
                 # print("epoch", epoch, "batch", batch, "fast_rcnn_cls_loss", fast_rcnn_cls_loss)
+                rpn_recall_iou_metrics = {k: v / num_batches for k, v in rpn_recall_iou_metrics.items()}
                 self.run_manager.log_metrics(
                     {
                         "train/rpn_objectness_loss": rpn_objectness_loss / num_batches,
@@ -241,7 +267,8 @@ class Trainer:
                         # "train/percent_incorrect_localization": num_incorrect_localization / num_objects,
                         # "train/percent_incorrect_other": num_incorrect_other / num_objects,
                         # "train/percent_incorrect_background": num_incorrect_background / num_objects,
-                    },
+                    }
+                    | {f"train_{k}": v for k, v in rpn_recall_iou_metrics.items()},
                     epoch + batch / len(self.train_dataloader),
                 )
 
@@ -252,6 +279,7 @@ class Trainer:
                 fast_rcnn_bbox_loss = 0.0
                 fast_rcnn_total_loss = 0.0
                 faster_rcnn_total_loss = 0.0
+                rpn_recall_iou_metrics = {f"rpn_recall@{t}": 0.0 for t in self.rpn_recall_iou_thresholds}
                 num_batches = 0
 
                 # num_correct = 0

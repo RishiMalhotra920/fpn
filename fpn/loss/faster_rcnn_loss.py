@@ -3,7 +3,8 @@ from torch import nn
 
 from fpn.loss.fast_rcnn_loss import FastRCNNLoss
 from fpn.loss.rpn_loss import RPNLoss
-from fpn.YOLO_metrics import YOLOMetrics
+
+# from fpn.YOLO_metrics import YOLOMetrics
 
 
 class FasterRCNNLoss(nn.Module):
@@ -12,7 +13,7 @@ class FasterRCNNLoss(nn.Module):
         self.background_class_idx = background_class_idx
         self.rpn_loss = RPNLoss()
         self.fast_rcnn_loss = FastRCNNLoss(background_class_idx)
-        self.metric = YOLOMetrics()
+        # self.metric = YOLOMetrics()
         self.device = device
 
     def __call__(

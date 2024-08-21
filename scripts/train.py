@@ -17,7 +17,6 @@ from fpn.lr_scheduler import get_custom_lr_scheduler, get_fixed_lr_scheduler
 from fpn.models import FPN, FasterRCNN
 from fpn.run_manager import RunManager
 from fpn.trainer import Trainer
-from fpn.YOLO_metrics import YOLOMetrics
 
 # from typing_extensions
 
@@ -104,7 +103,6 @@ def main(
         train_dataset = CustomVOCDetectionDataset(config["pascal_voc_root_dir"], "train", data_transform)
         val_dataset = CustomVOCDetectionDataset(config["pascal_voc_root_dir"], "val", data_transform)
 
-        # change
         train_dataloader = train_dataset.get_dataloader(batch_size, num_workers, shuffle=True)
         test_dataloader = val_dataset.get_dataloader(batch_size, num_workers, shuffle=False)
 
@@ -176,8 +174,6 @@ def main(
 
         run_manager.log_data({"parameters": parameters, "model/summary": str(model)})
 
-        yolo_metric = YOLOMetrics()
-
         trainer = Trainer(
             backbone=backbone,
             model=model,  # type: ignore
@@ -186,7 +182,6 @@ def main(
             lr_scheduler=lr_scheduler,
             optimizer=optimizer,
             loss_fn=loss_fn,
-            metric=yolo_metric,
             epoch_start=epoch_start,
             epoch_end=epoch_start + num_epochs,
             run_manager=run_manager,
