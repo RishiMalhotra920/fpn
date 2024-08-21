@@ -5,7 +5,7 @@ import torchvision.models as models
 
 
 class FPN(nn.Module):
-    def __init__(self, *, device: str):
+    def __init__(self, freeze_backbone, *, device: str):
         super().__init__()
         resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
         self.backbone = list(resnet.children())[:-2]
@@ -24,6 +24,17 @@ class FPN(nn.Module):
         self.smooth2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
 
         self.device = device
+
+        if freeze_backbone:
+            self._freeze_backbone()
+
+    def _freeze_backbone(self):
+        for param in self.initial_layers.parameters():
+            param.requires_grad = False
+
+        for layer in [self.layer1, self.layer2, self.layer3, self.layer4]:
+            for param in layer.parameters():
+                param.requires_grad = False
 
     def forward(self, x: torch.Tensor):
         x = self.initial_layers(x)  # (N, 64, M, M)

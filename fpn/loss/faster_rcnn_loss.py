@@ -18,7 +18,7 @@ class FasterRCNNLoss(nn.Module):
     def __call__(
         self,
         rpn_objectness_pred: torch.Tensor,
-        rpn_bbox_pred: torch.Tensor,
+        rpn_bbox_offset_pred: torch.Tensor,
         fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox: list[torch.Tensor],
         fast_rcnn_bbox_pred_for_some_rpn_bbox: list[torch.Tensor],
         rpn_objectness_gt: torch.Tensor,
@@ -34,7 +34,7 @@ class FasterRCNNLoss(nn.Module):
     ) -> dict[str, torch.Tensor]:
         return super().__call__(
             rpn_objectness_pred,
-            rpn_bbox_pred,
+            rpn_bbox_offset_pred,
             fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
             fast_rcnn_bbox_pred_for_some_rpn_bbox,
             rpn_objectness_gt,
@@ -51,11 +51,11 @@ class FasterRCNNLoss(nn.Module):
     def forward(
         self,
         rpn_objectness_pred: torch.Tensor,
-        rpn_bbox_pred: torch.Tensor,
+        rpn_bbox_offset_pred: torch.Tensor,
         fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox: list[torch.Tensor],
         fast_rcnn_bbox_pred_for_some_rpn_bbox: list[torch.Tensor],
         rpn_objectness_gt: torch.Tensor,
-        rpn_bbox_gt: torch.Tensor,
+        rpn_bbox_offset_gt: torch.Tensor,
         fast_rcnn_cls_gt_nms_fg_and_bg_some: list[torch.Tensor],
         fast_rcnn_bbox_gt_nms_fg_and_bg_some: list[torch.Tensor],
         *,
@@ -67,9 +67,9 @@ class FasterRCNNLoss(nn.Module):
     ) -> dict[str, torch.Tensor]:
         rpn_loss_dict = self.rpn_loss(
             rpn_objectness_pred,
-            rpn_bbox_pred,
+            rpn_bbox_offset_pred,
             rpn_objectness_gt,
-            rpn_bbox_gt,
+            rpn_bbox_offset_gt,
             lambda_rpn_objectness=lambda_rpn_objectness,
             lambda_rpn_bbox=lambda_rpn_bbox,
             device=device,

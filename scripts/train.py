@@ -51,6 +51,7 @@ def main(
     lr: float = typer.Option(..., help="Learning rate for fixed scheduler or starting learning rate for custom scheduler"),
     nms_threshold: float = typer.Option(0.5, help="Non-maximum suppression threshold"),
     dropout: float = typer.Option(..., help="Dropout rate for the model"),
+    freeze_backbone: bool = typer.Option(True, help="Freeze the backbone"),
     run_name: str = typer.Option(None, help="A name for the run"),
     checkpoint_interval: int = typer.Option(1, help="The number of epochs to wait before saving model checkpoint"),
     image_dim: int = typer.Option(224, help="Size of the image"),
@@ -109,7 +110,7 @@ def main(
 
         # Create model with help from model_builder.py
         # make it so that we minimize the sum of all the losses in the fpn!!
-        backbone = FPN(device=device).to(device)
+        backbone = FPN(freeze_backbone, device=device).to(device)
         faster_rcnn_with_fpn_model = FasterRCNN((image_dim, image_dim), nms_threshold, device=device)
 
         # run_manager = RunManager()  # empty run for testing!

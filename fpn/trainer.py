@@ -78,17 +78,23 @@ class Trainer:
             self.fpn_map_medium_anchor_scales,
             self.fpn_map_large_anchor_scales,
         ]
+
         self.all_anchor_ratios = [anchor_ratios, anchor_ratios, anchor_ratios]
 
         self.all_anchor_widths = []  # list([(9, ), (9, ), (9, )])
         self.all_anchor_heights = []  # list([(9, ), (9, ), (9, )])
-
-        for anchor_scales in self.all_anchor_scales:
+        self.all_anchor_positions = []
+        feature_map_dims = [28, 14, 7]  # found through experimentation
+        for anchor_scales, s in zip(self.all_anchor_scales, feature_map_dims):
             permutations = torch.cartesian_prod(anchor_scales, anchor_ratios)
             widths = permutations[:, 0] * permutations[:, 1]  # (9, )
             heights = permutations[:, 0] * (1 / permutations[:, 1])  # (9, )
+
+            anchor_positions = self._get_anchor_positions(heights, widths, s, image_size[0])
+
             self.all_anchor_widths.append(widths)
             self.all_anchor_heights.append(heights)
+            self.all_anchor_positions.append(anchor_positions)
 
         # self.image_size = image_size
         self.nms_threshold = nms_threshold
@@ -106,8 +112,32 @@ class Trainer:
             device=device,
         )
 
-    def __repr__(self) -> str:
-        return f"Trainer(model={self.model}, train_dataloader={self.train_dataloader}, val_dataloader={self.val_dataloader}, lr_scheduler={self.lr_scheduler}, optimizer={self.optimizer}, loss_fn={self.loss_fn}, metric={self.metric}, epoch_start={self.epoch_start}, epoch_end={self.epoch_end}, run_manager={self.run_manager}, checkpoint_interval={self.checkpoint_interval}, log_interval={self.log_interval}, device={self.device})"
+    def _get_anchor_positions(self, anchor_heights: torch.Tensor, anchor_widths: torch.Tensor, s: int, image_dim: int) -> torch.Tensor:
+        """
+        Get anchor positions for the volume in the shape:
+        (1, feature_map_height*feature_map_width*anchor_heights*anchor_widths, 4)
+        """
+        x_step = image_dim / s
+        y_step = image_dim / s
+
+        grid = torch.zeros(s, s, len(anchor_heights), 4, device=self.device)
+
+        x_grid_cell_centers = ((torch.arange(0, s, device=self.device).float() * x_step) + (x_step / 2)).reshape(1, s, 1)
+        y_grid_cell_centers = ((torch.arange(0, s, device=self.device).float() * y_step) + (y_step / 2)).reshape(s, 1, 1)
+
+        anchor_widths_grid = anchor_widths.reshape(1, 1, len(anchor_widths))
+        anchor_heights_grid = anchor_heights.reshape(1, 1, len(anchor_heights))
+
+        # x and y centers broadcast from ( s, 1, 1) to (s, s, 9)
+        # widths and heights broadcast from ( 1, 1, 9) to ( s, s, 9)
+        grid[:, :, :, 0] = x_grid_cell_centers - anchor_widths_grid / 2  # (1, s, s, 9)
+        grid[:, :, :, 1] = y_grid_cell_centers - anchor_heights_grid / 2
+        grid[:, :, :, 2] = x_grid_cell_centers + anchor_widths_grid / 2
+        grid[:, :, :, 3] = y_grid_cell_centers + anchor_heights_grid / 2
+
+        reshaped_grid = grid.reshape(s * s * len(anchor_heights), 4)
+
+        return reshaped_grid  # (s*s*9, 4)
 
     def train_step(self, epoch: int) -> None:
         self.model.train()
@@ -138,26 +168,28 @@ class Trainer:
 
             fpn_maps = self.backbone(image)
 
-            for fpn_map, anchor_heights, anchor_widths in zip(fpn_maps, self.all_anchor_heights, self.all_anchor_widths):
+            for fpn_map, anchor_heights, anchor_widths, anchor_positions in zip(
+                fpn_maps, self.all_anchor_heights, self.all_anchor_widths, self.all_anchor_positions
+            ):
                 (
                     rpn_objectness_pred,
-                    rpn_bbox_pred,
+                    rpn_bbox_offset_pred,
                     fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
                     fast_rcnn_bbox_pred_for_some_rpn_bbox,
                     rpn_objectness_gt,
-                    rpn_bbox_gt,
+                    rpn_bbox_offset_gt,
                     fast_rcnn_cls_gt_nms_fg_and_bg_some,
                     fast_rcnn_bbox_gt_nms_fg_and_bg_some,
-                ) = self.model(fpn_map, anchor_heights, anchor_widths, raw_cls_gt, raw_bbox_gt)
+                ) = self.model(fpn_map, anchor_heights, anchor_widths, anchor_positions, raw_cls_gt, raw_bbox_gt)
 
                 # fast_rcnn_cls_pred: tuple[]
                 loss_dict = self.loss_fn(
                     rpn_objectness_pred,
-                    rpn_bbox_pred,
+                    rpn_bbox_offset_pred,
                     fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
                     fast_rcnn_bbox_pred_for_some_rpn_bbox,
                     rpn_objectness_gt,
-                    rpn_bbox_gt,
+                    rpn_bbox_offset_gt,
                     fast_rcnn_cls_gt_nms_fg_and_bg_some,
                     fast_rcnn_bbox_gt_nms_fg_and_bg_some,
                     device=self.device,
@@ -247,26 +279,29 @@ class Trainer:
                 image, raw_cls_gt, raw_bbox_gt = cast(torch.Tensor, image), cast(torch.Tensor, raw_cls_gt), cast(torch.Tensor, raw_bbox_gt)
 
                 fpn_maps = self.backbone(image)
-                for fpn_map, anchor_heights, anchor_widths in zip(fpn_maps, self.all_anchor_heights, self.all_anchor_widths):
+
+                for fpn_map, anchor_heights, anchor_widths, anchor_positions in zip(
+                    fpn_maps, self.all_anchor_heights, self.all_anchor_widths, self.all_anchor_positions
+                ):
                     (
                         rpn_objectness_pred,
-                        rpn_bbox_pred,
+                        rpn_bbox_offset_pred,
                         fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
                         fast_rcnn_bbox_pred_for_some_rpn_bbox,
                         rpn_objectness_gt,
-                        rpn_bbox_gt,
+                        rpn_bbox_offset_gt,
                         fast_rcnn_cls_gt_nms_fg_and_bg_some,
                         fast_rcnn_bbox_gt_nms_fg_and_bg_some,
-                    ) = self.model(fpn_map, anchor_heights, anchor_widths, raw_cls_gt, raw_bbox_gt)
+                    ) = self.model(fpn_map, anchor_heights, anchor_widths, anchor_positions, raw_cls_gt, raw_bbox_gt)
 
                     # fast_rcnn_cls_pred: tuple[]
                     loss_dict = self.loss_fn(
                         rpn_objectness_pred,
-                        rpn_bbox_pred,
+                        rpn_bbox_offset_pred,
                         fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
                         fast_rcnn_bbox_pred_for_some_rpn_bbox,
                         rpn_objectness_gt,
-                        rpn_bbox_gt,
+                        rpn_bbox_offset_gt,
                         fast_rcnn_cls_gt_nms_fg_and_bg_some,
                         fast_rcnn_bbox_gt_nms_fg_and_bg_some,
                         device=self.device,

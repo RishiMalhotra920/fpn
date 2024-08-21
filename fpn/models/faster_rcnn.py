@@ -42,6 +42,7 @@ class FasterRCNN(nn.Module):
         fpn_map: torch.Tensor,
         anchor_heights: torch.Tensor,
         anchor_widths: torch.Tensor,
+        anchor_positions: torch.Tensor,
         raw_cls_gt: torch.Tensor,
         raw_bbox_gt: torch.Tensor,
     ) -> tuple[
@@ -54,13 +55,14 @@ class FasterRCNN(nn.Module):
         list[torch.Tensor],
         list[torch.Tensor],
     ]:
-        return super().__call__(fpn_map, anchor_heights, anchor_widths, raw_cls_gt, raw_bbox_gt)
+        return super().__call__(fpn_map, anchor_heights, anchor_widths, anchor_positions, raw_cls_gt, raw_bbox_gt)
 
     def forward(
         self,
         fpn_map: torch.Tensor,
         anchor_heights: torch.Tensor,
         anchor_widths: torch.Tensor,
+        anchor_positions: torch.Tensor,
         raw_cls_gt: torch.Tensor,
         raw_bbox_gt: torch.Tensor,
     ) -> tuple[
@@ -92,12 +94,14 @@ class FasterRCNN(nn.Module):
         rpn_bbox_pred = BatchBoundingBoxes.convert_rpn_bbox_offsets_to_rpn_bbox(
             anchor_heights, anchor_widths, rpn_bbox_offset_pred, self.image_size, self.device
         ).corner_format  # (b, s*s*n_a, 4)
+
+        rpn_bbox_offset_pred = rpn_bbox_offset_pred.reshape(b, -1, 4)  # (b, s*s*n_a, 4)
         rpn_objectness_pred = rpn_objectness_pred.reshape(b, -1)  # (b, n_a*s*s)
 
         # should do this matching with anchors btw for stability.
         # get rpn_bbox_gt from here as well.
-        rpn_objectness_gt, rpn_cls_gt, rpn_bbox_gt, rpn_bbox_pred_and_best_rpn_bbox_gt_iou = self.extract_rpn_gt(
-            rpn_bbox_pred, raw_cls_gt, raw_bbox_gt, self.match_iou_threshold
+        rpn_objectness_gt, rpn_cls_gt, rpn_bbox_gt, rpn_bbox_offset_gt, rpn_bbox_pred_and_best_rpn_bbox_gt_iou = self.extract_rpn_gt(
+            anchor_positions, raw_cls_gt, raw_bbox_gt, self.match_iou_threshold
         )
 
         # for inference, pick the top N bboxes according to confidence scores.
@@ -117,12 +121,6 @@ class FasterRCNN(nn.Module):
             neg_iou=self.rpn_neg_iou,
         )
 
-        # TODO: this function should not return any list_of variables.
-        # it should only return the preds and gts for both faster rcnn
-        # and rpn, greatly simplifying the code.
-
-        # pass to the fast rcnn classifier
-        # TODO: ensure that offsets for only the gt class are returned!
         fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox, fast_rcnn_bbox_offsets_for_all_classes_for_some_rpn_bbox = self.fast_rcnn_classifier(
             fpn_map, rpn_bbox_pred_nms_fg_and_bg_some
         )  # list[(num_rois, num_classes)], list[(num_rois, num_classes, 4)]
@@ -131,18 +129,17 @@ class FasterRCNN(nn.Module):
             fast_rcnn_cls_gt_nms_fg_and_bg_some, fast_rcnn_bbox_offsets_for_all_classes_for_some_rpn_bbox
         )
 
-        # fast_rcnn_bbox = BatchBoundingBoxes.from_bounding_boxes_and_offsets(list_of_picked_bbox, bbox_offsets)
         fast_rcnn_bbox_pred_for_some_rpn_bbox = self.apply_offsets_to_fast_rcnn_bbox(
             rpn_bbox_pred_nms_fg_and_bg_some, fast_rcnn_bbox_offsets_for_gt_class_for_some_rpn_bbox
         )
 
         return (
             rpn_objectness_pred,
-            rpn_bbox_pred,
+            rpn_bbox_offset_pred,
             fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
             fast_rcnn_bbox_pred_for_some_rpn_bbox,
             rpn_objectness_gt,
-            rpn_bbox_gt,
+            rpn_bbox_offset_gt,
             fast_rcnn_cls_gt_nms_fg_and_bg_some,
             fast_rcnn_bbox_gt_nms_fg_and_bg_some,
         )
@@ -164,8 +161,12 @@ class FasterRCNN(nn.Module):
         return fast_rcnn_bbox_offsets_for_gt_class
 
     def extract_rpn_gt(
-        self, rpn_bbox_pred: torch.Tensor, raw_cls_gt: torch.Tensor, raw_bbox_gt: torch.Tensor, iou_threshold: float
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        self,
+        anchor_positions: torch.Tensor,
+        raw_cls_gt: torch.Tensor,
+        raw_bbox_gt: torch.Tensor,
+        iou_threshold: float,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Match the pred bbox to the gt bbox based on the IOU and return if the pred bbox are foreground or not.
 
         Here's what's happening:
@@ -189,29 +190,56 @@ class FasterRCNN(nn.Module):
         rpn_cls_gt = []
         rpn_bbox_gt = []
         rpn_objectness_gt = []
+        rpn_bbox_offset_gt = []
         rpn_bbox_pred_and_best_rpn_bbox_gt_iou = []
-        b = len(rpn_bbox_pred)
+        b = len(raw_bbox_gt)
 
         for image_idx in range(b):
-            image_bbox_pred = rpn_bbox_pred[image_idx]  # (z_i, 4)
-            image_bbox_gt = raw_bbox_gt[image_idx]  # (max_gt_bbox, 4)
+            # image_bbox_pred = rpn_bbox_offset_pred[image_idx]  # (z_i, 4)
+            image_all_bbox_gt = raw_bbox_gt[image_idx]  # (max_gt_bbox, 4)
 
-            ious = torchvision.ops.box_iou(image_bbox_pred, image_bbox_gt)  # (z_i, max_gt_bbox)
+            ious = torchvision.ops.box_iou(anchor_positions, image_all_bbox_gt)  # (s*s*9, max_gt_bbox)
 
-            best_iou, best_gt_index = torch.max(ious, dim=1)  # (z_i)
-            is_foreground = best_iou > iou_threshold  # (z_i)
+            best_iou, best_gt_index = torch.max(ious, dim=1)  # (s*s*9)
+            is_foreground = best_iou > iou_threshold  # (s*s*9)
 
             image_cls_gt = torch.where(
                 is_foreground, raw_cls_gt[image_idx][best_gt_index], torch.full_like(best_gt_index, BACKGROUND_CLASS_INDEX, device=self.device)
             )
-            image_bbox_gt = raw_bbox_gt[image_idx][best_gt_index]  # (z_i, 4)
+            image_bbox_gt = image_all_bbox_gt[best_gt_index]  # (s*s*9, 4)
+            # need to convert this to offsets
+            image_bbox_offsets_gt = self._convert_bbox_and_anchor_to_bbox_offsets(anchor_positions, image_bbox_gt)  # (z_i, 4)
 
             rpn_objectness_gt.append(is_foreground.float())
             rpn_cls_gt.append(image_cls_gt)
             rpn_bbox_gt.append(image_bbox_gt)
             rpn_bbox_pred_and_best_rpn_bbox_gt_iou.append(best_iou)  # (z_i)
+            rpn_bbox_offset_gt.append(image_bbox_offsets_gt)
 
-        return torch.stack(rpn_objectness_gt), torch.stack(rpn_cls_gt), torch.stack(rpn_bbox_gt), torch.stack(rpn_bbox_pred_and_best_rpn_bbox_gt_iou)
+        return (
+            torch.stack(rpn_objectness_gt),
+            torch.stack(rpn_cls_gt),
+            torch.stack(rpn_bbox_gt),
+            torch.stack(rpn_bbox_offset_gt),
+            torch.stack(rpn_bbox_pred_and_best_rpn_bbox_gt_iou),
+        )
+
+    def _convert_bbox_and_anchor_to_bbox_offsets(self, anchor_positions: torch.Tensor, bbox: torch.Tensor) -> torch.Tensor:
+        # given anchor positions corresponding to boxes, convert the bbox to offsets
+        # anchor_positions: (s*s*9, 4), bbox: (s*s*9, 4)
+
+        anchor_xywh_positions = BatchBoundingBoxes._corner_to_center(anchor_positions)  # (s*s*9, 4)
+        bbox_xywh_positions = BatchBoundingBoxes._corner_to_center(bbox)  # (s*s*9, 4)
+
+        offsets = torch.zeros_like(anchor_xywh_positions, device=self.device)
+
+        # x - x_a / w_a
+        offsets[:, 0] = (bbox_xywh_positions[:, 0] - anchor_xywh_positions[:, 0]) / anchor_xywh_positions[:, 2]
+        offsets[:, 1] = (bbox_xywh_positions[:, 1] - anchor_xywh_positions[:, 1]) / (anchor_xywh_positions[:, 3])
+        offsets[:, 2] = torch.log(bbox_xywh_positions[:, 2] / anchor_xywh_positions[:, 2])
+        offsets[:, 3] = torch.log(bbox_xywh_positions[:, 3] / anchor_xywh_positions[:, 3])
+
+        return offsets
 
     def apply_offsets_to_fast_rcnn_bbox(self, list_of_picked_bbox: list[torch.Tensor], offsets: list[torch.Tensor]) -> list[torch.Tensor]:
         """Apply the bounding box regression offsets to the bounding boxes.

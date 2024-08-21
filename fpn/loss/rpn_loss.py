@@ -31,9 +31,9 @@ class RPNLoss(nn.Module):
     def forward(
         self,
         objectness_pred: torch.Tensor,
-        bbox_pred: torch.Tensor,
+        bbox_offset_pred: torch.Tensor,
         objectness_gt: torch.Tensor,
-        bbox_gt: torch.Tensor,
+        bbox_offset_gt: torch.Tensor,
         *,
         device: str,
         lambda_rpn_objectness=1,
@@ -59,8 +59,8 @@ class RPNLoss(nn.Module):
 
         objectness_loss = F.binary_cross_entropy_with_logits(objectness_pred, objectness_gt, reduction="mean")
 
-        filtered_bbox_pred = bbox_pred[objectness_gt == 1]  # (b, num_gt_objectness, 4)
-        filtered_bbox_gt = bbox_gt[objectness_gt == 1]  # (b, num_gt_objectness, 4)
+        filtered_bbox_pred = bbox_offset_pred[objectness_gt == 1]  # (b, num_gt_objectness, 4)
+        filtered_bbox_gt = bbox_offset_gt[objectness_gt == 1]  # (b, num_gt_objectness, 4)
         bbox_loss = F.smooth_l1_loss(filtered_bbox_pred, filtered_bbox_gt, reduction="mean")
 
         return {
