@@ -223,6 +223,7 @@ class Trainer:
             # doing a safe division here
 
             if batch != 0 and batch % self.log_interval == 0:
+                print("epoch", epoch, "batch", batch, "fast_rcnn_cls_loss", fast_rcnn_cls_loss)
                 self.run_manager.log_metrics(
                     {
                         "train/rpn_objectness_loss": rpn_objectness_loss,
