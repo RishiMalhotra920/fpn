@@ -125,24 +125,47 @@ class FasterRCNN(nn.Module):
             fpn_map, rpn_bbox_pred_nms_fg_and_bg_some
         )  # list[(num_rois, num_classes)], list[(num_rois, num_classes, 4)]
 
-        fast_rcnn_bbox_offsets_for_gt_class_for_some_rpn_bbox = self.get_fast_rcnn_bbox_offsets_for_gt_class(
+        fast_rcnn_bbox_offsets_pred = self.get_fast_rcnn_bbox_offsets_for_gt_class(
             fast_rcnn_cls_gt_nms_fg_and_bg_some, fast_rcnn_bbox_offsets_for_all_classes_for_some_rpn_bbox
         )
 
-        fast_rcnn_bbox_pred_for_some_rpn_bbox = self.apply_offsets_to_fast_rcnn_bbox(
-            rpn_bbox_pred_nms_fg_and_bg_some, fast_rcnn_bbox_offsets_for_gt_class_for_some_rpn_bbox
-        )
+        fast_rcnn_bbox_offsets_gt = self.get_fast_rcnn_bbox_offsets_gt(rpn_bbox_pred_nms_fg_and_bg_some, fast_rcnn_bbox_gt_nms_fg_and_bg_some)
+
+        # fast_rcnn_bbox_pred_for_some_rpn_bbox = self.apply_offsets_to_fast_rcnn_bbox(
+        # rpn_bbox_pred_nms_fg_and_bg_some, fast_rcnn_bbox_offsets_for_gt_class_for_some_rpn_bbox
+        # )
 
         return (
             rpn_objectness_pred,
             rpn_bbox_offset_pred,
             fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
-            fast_rcnn_bbox_pred_for_some_rpn_bbox,
+            fast_rcnn_bbox_offsets_pred,
             rpn_objectness_gt,
             rpn_bbox_offset_gt,
             fast_rcnn_cls_gt_nms_fg_and_bg_some,
-            fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+            fast_rcnn_bbox_offsets_gt,
         )
+
+    def get_fast_rcnn_bbox_offsets_gt(
+        self, rpn_bbox_pred_nms_fg_and_bg_some: list[torch.Tensor], fast_rcnn_bbox_gt_nms_fg_and_bg_some: list[torch.Tensor]
+    ):
+        fast_rcnn_bbox_offsets_gt = []
+        for rpn_image_bbox_pred_nms_fg_and_bg_some, fast_rcnn_image_bbox_gt_nms_fg_and_bg_some in zip(
+            rpn_bbox_pred_nms_fg_and_bg_some, fast_rcnn_bbox_gt_nms_fg_and_bg_some
+        ):
+            base_xywh = BatchBoundingBoxes._corner_to_center(rpn_image_bbox_pred_nms_fg_and_bg_some)
+            base_with_offsets_xywh = BatchBoundingBoxes._corner_to_center(fast_rcnn_image_bbox_gt_nms_fg_and_bg_some)
+
+            fast_rcnn_image_bbox_offsets_gt = torch.zeros_like(base_with_offsets_xywh, device=self.device)
+
+            fast_rcnn_image_bbox_offsets_gt[:, 0] = (base_with_offsets_xywh[:, 0] - base_xywh[:, 0]) / base_xywh[:, 2]
+            fast_rcnn_image_bbox_offsets_gt[:, 1] = (base_with_offsets_xywh[:, 1] - base_xywh[:, 1]) / base_xywh[:, 3]
+            fast_rcnn_image_bbox_offsets_gt[:, 2] = torch.log(base_with_offsets_xywh[:, 2] / base_xywh[:, 2])
+            fast_rcnn_image_bbox_offsets_gt[:, 3] = torch.log(base_with_offsets_xywh[:, 3] / base_xywh[:, 3])
+
+            fast_rcnn_bbox_offsets_gt.append(fast_rcnn_image_bbox_offsets_gt)
+
+        return fast_rcnn_bbox_offsets_gt
 
     def get_fast_rcnn_bbox_offsets_for_gt_class(
         self, fast_rcnn_cls_gt_nms_fg_and_bg_some: list[torch.Tensor], fast_rcnn_bbox_offsets_for_all_classes: list[torch.Tensor]

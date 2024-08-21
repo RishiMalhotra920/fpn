@@ -175,11 +175,11 @@ class Trainer:
                     rpn_objectness_pred,
                     rpn_bbox_offset_pred,
                     fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
-                    fast_rcnn_bbox_pred_for_some_rpn_bbox,
+                    fast_rcnn_bbox_offsets_pred,
                     rpn_objectness_gt,
                     rpn_bbox_offset_gt,
                     fast_rcnn_cls_gt_nms_fg_and_bg_some,
-                    fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+                    fast_rcnn_bbox_offsets_gt,
                 ) = self.model(fpn_map, anchor_heights, anchor_widths, anchor_positions, raw_cls_gt, raw_bbox_gt)
 
                 # fast_rcnn_cls_pred: tuple[]
@@ -187,11 +187,11 @@ class Trainer:
                     rpn_objectness_pred,
                     rpn_bbox_offset_pred,
                     fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
-                    fast_rcnn_bbox_pred_for_some_rpn_bbox,
+                    fast_rcnn_bbox_offsets_pred,
                     rpn_objectness_gt,
                     rpn_bbox_offset_gt,
                     fast_rcnn_cls_gt_nms_fg_and_bg_some,
-                    fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+                    fast_rcnn_bbox_offsets_gt,
                     device=self.device,
                 )
 

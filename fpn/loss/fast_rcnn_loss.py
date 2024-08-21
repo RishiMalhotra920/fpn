@@ -32,9 +32,9 @@ class FastRCNNLoss(nn.Module):
     def forward(
         self,
         fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox: list[torch.Tensor],
-        fast_rcnn_bbox_pred_for_some_rpn_bbox: list[torch.Tensor],
+        fast_rcnn_bbox_offsets_pred: list[torch.Tensor],
         fast_rcnn_cls_gt_nms_fg_and_bg_some: list[torch.Tensor],
-        fast_rcnn_bbox_gt_nms_fg_and_bg_some: list[torch.Tensor],
+        fast_rcnn_bbox_offsets_gt: list[torch.Tensor],
         lambda_fast_rcnn_cls: float,
         lambda_fast_rcnn_bbox: float,
         *,
@@ -51,14 +51,14 @@ class FastRCNNLoss(nn.Module):
             )
 
             fg_bbox_indices = fast_rcnn_cls_gt_nms_fg_and_bg_some[image_idx] != self.background_class_index
-            fg_bbox_pred = fast_rcnn_bbox_pred_for_some_rpn_bbox[image_idx][fg_bbox_indices]
-            fg_bbox_gt = fast_rcnn_bbox_gt_nms_fg_and_bg_some[image_idx][fg_bbox_indices]
+            fg_bbox_offsets_pred = fast_rcnn_bbox_offsets_pred[image_idx][fg_bbox_indices]
+            fg_bbox_offsets_gt = fast_rcnn_bbox_offsets_gt[image_idx][fg_bbox_indices]
 
             # if no fg bbox, don't compute the bbox loss.
-            if fg_bbox_pred.numel() != 0:
-                bbox_loss = F.smooth_l1_loss(fg_bbox_pred, fg_bbox_gt, reduction="sum")
+            if fg_bbox_offsets_pred.numel() != 0:
+                bbox_loss = F.smooth_l1_loss(fg_bbox_offsets_pred, fg_bbox_offsets_gt, reduction="sum")
                 total_bbox_loss += bbox_loss
-                num_bbox_pred += len(fg_bbox_pred)
+                num_bbox_pred += len(fg_bbox_offsets_pred)
 
             total_cls_loss += cls_loss
             num_cls_pred += len(fast_rcnn_cls_gt_nms_fg_and_bg_some[image_idx])
