@@ -150,6 +150,8 @@ class Trainer:
         fast_rcnn_bbox_loss = 0.0
         fast_rcnn_total_loss = 0.0
         faster_rcnn_total_loss = 0.0
+        # the first time we log, we log for 11 batches so need num_batches for averaging
+        num_batches = 0
 
         # num_correct = 0
         # num_incorrect_localization = 0
@@ -205,6 +207,8 @@ class Trainer:
 
                 total_faster_rcnn_loss += loss_dict["faster_rcnn_total_loss"]
 
+            num_batches += 1
+
             self.optimizer.zero_grad()
             total_faster_rcnn_loss.backward()
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -223,17 +227,17 @@ class Trainer:
             # doing a safe division here
 
             if batch != 0 and batch % self.log_interval == 0:
-                print("epoch", epoch, "batch", batch, "fast_rcnn_cls_loss", fast_rcnn_cls_loss)
+                # print("epoch", epoch, "batch", batch, "fast_rcnn_cls_loss", fast_rcnn_cls_loss)
                 self.run_manager.log_metrics(
                     {
-                        "train/rpn_objectness_loss": rpn_objectness_loss,
-                        "train/rpn_bbox_loss": rpn_bbox_loss,
-                        "train/rpn_total_loss": rpn_total_loss,
-                        "train/fast_rcnn_cls_loss": fast_rcnn_cls_loss,
-                        "train/fast_rcnn_bbox_loss": fast_rcnn_bbox_loss,
-                        "train/fast_rcnn_total_loss": fast_rcnn_total_loss,
-                        "train/faster_rcnn_total_loss": faster_rcnn_total_loss,
-                        # "train/accuracy": num_correct / num_objects,
+                        "train/rpn_objectness_loss": rpn_objectness_loss / num_batches,
+                        "train/rpn_bbox_loss": rpn_bbox_loss / num_batches,
+                        "train/rpn_total_loss": rpn_total_loss / num_batches,
+                        "train/fast_rcnn_cls_loss": fast_rcnn_cls_loss / num_batches,
+                        "train/fast_rcnn_bbox_loss": fast_rcnn_bbox_loss / num_batches,
+                        "train/fast_rcnn_total_loss": fast_rcnn_total_loss / num_batches,
+                        "train/faster_rcnn_total_loss": faster_rcnn_total_loss / num_batches,
+                        # "train/accuracy": num_correct / num_objects, #TODO: remember to divide by num_batches
                         # "train/percent_incorrect_localization": num_incorrect_localization / num_objects,
                         # "train/percent_incorrect_other": num_incorrect_other / num_objects,
                         # "train/percent_incorrect_background": num_incorrect_background / num_objects,
@@ -248,6 +252,7 @@ class Trainer:
                 fast_rcnn_bbox_loss = 0.0
                 fast_rcnn_total_loss = 0.0
                 faster_rcnn_total_loss = 0.0
+                num_batches = 0
 
                 # num_correct = 0
                 # num_incorrect_localization = 0
