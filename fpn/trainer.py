@@ -69,10 +69,10 @@ class Trainer:
         self.backbone = backbone
 
         # fpn specific things
-        self.fpn_map_small_anchor_scales = torch.tensor([32.0, 64.0, 128.0])
-        self.fpn_map_medium_anchor_scales = torch.tensor([64.0, 128.0, 256.0])
-        self.fpn_map_large_anchor_scales = torch.tensor([128.0, 256.0, 512.0])
-        anchor_ratios = torch.tensor([0.5, 1, 2])
+        self.fpn_map_small_anchor_scales = torch.tensor([32.0, 64.0, 128.0], device=device)
+        self.fpn_map_medium_anchor_scales = torch.tensor([64.0, 128.0, 256.0], device=device)
+        self.fpn_map_large_anchor_scales = torch.tensor([128.0, 256.0, 512.0], device=device)
+        anchor_ratios = torch.tensor([0.5, 1, 2], device=device)
         self.all_anchor_scales = [
             self.fpn_map_small_anchor_scales,
             self.fpn_map_medium_anchor_scales,
@@ -90,7 +90,7 @@ class Trainer:
             widths = permutations[:, 0] * permutations[:, 1]  # (9, )
             heights = permutations[:, 0] * (1 / permutations[:, 1])  # (9, )
 
-            anchor_positions = self._get_anchor_positions(heights, widths, s, image_size[0])
+            anchor_positions = self._get_anchor_positions(widths, heights, s, image_size[0])
 
             self.all_anchor_widths.append(widths)
             self.all_anchor_heights.append(heights)
@@ -112,7 +112,7 @@ class Trainer:
             device=device,
         )
 
-    def _get_anchor_positions(self, anchor_heights: torch.Tensor, anchor_widths: torch.Tensor, s: int, image_dim: int) -> torch.Tensor:
+    def _get_anchor_positions(self, anchor_widths: torch.Tensor, anchor_heights: torch.Tensor, s: int, image_dim: int) -> torch.Tensor:
         """
         Get anchor positions for the volume in the shape:
         (1, feature_map_height*feature_map_width*anchor_heights*anchor_widths, 4)
