@@ -400,7 +400,8 @@ class Trainer:
 
             # saves model/epoch_5 at the end of epoch 5. epochs are 0 indexed.
             if epoch % self.checkpoint_interval == 0 or epoch == self.epoch_end - 1:
+                pass
                 # self.test_step(epoch + 1)
-                self.run_manager.save_model(self.model, epoch)
+                # self.run_manager.save_model(self.model, epoch)
 
             self.lr_scheduler.step()
