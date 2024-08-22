@@ -39,7 +39,7 @@ def visualize_bbox(
     show_gt: bool = True,
 ):
     num_images = images.shape[0]
-    fig, axes = plt.subplots(1, num_images, figsize=(15 * num_images, 15))
+    fig, axes = plt.subplots(1, num_images, figsize=(9 * num_images, 9))
 
     for i in range(num_images):
         image = images[i]
@@ -50,13 +50,13 @@ def visualize_bbox(
 
         ax.imshow(image.permute(1, 2, 0))
 
-        if show_gt:
-            image_target_bbox = target_bbox[i]
-            image_target_labels = target_labels[i]
+        if show_pred:
+            image_pred_bbox = pred_bbox[i]
+            image_pred_labels = pred_labels[i]
 
-            for bbox_idx in range(len(image_target_bbox)):
-                x1, y1, x2, y2 = image_target_bbox[bbox_idx].tolist()
-                label = image_target_labels[bbox_idx].item()
+            for bbox_idx in range(len(image_pred_bbox)):
+                x1, y1, x2, y2 = image_pred_bbox[bbox_idx].tolist()
+                label = image_pred_labels[bbox_idx].item()
                 width = x2 - x1
                 height = y2 - y1
 
@@ -73,40 +73,39 @@ def visualize_bbox(
                 ax.text(
                     x1,
                     y1 - 10,
-                    f"Label: {label}",
+                    f"Pred: {label}",
                     color="white",
                     fontsize=12,
                     bbox=dict(facecolor="red", alpha=0.5),
                 )
+        if show_gt:
+            image_target_bbox = target_bbox[i]
+            image_target_labels = target_labels[i]
 
-            if show_pred:
-                image_pred_bbox = pred_bbox[i]
-                image_pred_labels = pred_labels[i]
+            for bbox_idx in range(len(image_target_bbox)):
+                x1, y1, x2, y2 = image_target_bbox[bbox_idx].tolist()
+                label = image_target_labels[bbox_idx].item()
+                width = x2 - x1
+                height = y2 - y1
 
-                for bbox_idx in range(len(image_pred_bbox)):
-                    x1, y1, x2, y2 = image_pred_bbox[bbox_idx].tolist()
-                    label = image_pred_labels[bbox_idx].item()
-                    width = x2 - x1
-                    height = y2 - y1
+                rect = patches.Rectangle(
+                    (x1, y1),
+                    width,
+                    height,
+                    linewidth=2,
+                    edgecolor="g",
+                    facecolor="none",
+                )
 
-                    rect = patches.Rectangle(
-                        (x1, y1),
-                        width,
-                        height,
-                        linewidth=2,
-                        edgecolor="r",
-                        facecolor="none",
-                    )
-
-                    ax.add_patch(rect)
-                    ax.text(
-                        x1,
-                        y1 - 10,
-                        f"Pred: {label}",
-                        color="white",
-                        fontsize=12,
-                        bbox=dict(facecolor="red", alpha=0.5),
-                    )
+                ax.add_patch(rect)
+                ax.text(
+                    x1,
+                    y1 - 10,
+                    f"Label: {label}",
+                    color="white",
+                    fontsize=12,
+                    bbox=dict(facecolor="green", alpha=0.5),
+                )
 
         ax.axis("off")
 
