@@ -61,7 +61,7 @@ def main(
     device: str = typer.Option("cpu", help="Device to train the model on"),
     num_rpn_rois_to_sample: int = typer.Option(256, help="Total number of RPN RoIs to sample across all feature map scales!"),
     rpn_pos_to_neg_ratio: int = typer.Option(1.0, help="Number of positive RoIs to sample for RPN"),
-    rpn_pos_iou: float = typer.Option(0.7, help="When sampling rpn preds, we sample fg samples from matches with iou threshold > rpn_pos_iou"),
+    rpn_pos_iou: float = typer.Option(0.5, help="When sampling rpn preds, we sample fg samples from matches with iou threshold > rpn_pos_iou"),
     rpn_neg_iou: float = typer.Option(0.3, help="When sampling rpn gts, we sample bg samples from matches with iou threshold < rpn_neg_iou"),
     lambda_rpn_objectness: int = typer.Option(1, help="Weight for rpn objectness loss"),
     lambda_rpn_bbox: int = typer.Option(20, help="Weight for rpn bbox loss"),

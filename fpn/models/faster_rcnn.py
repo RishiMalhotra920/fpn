@@ -57,8 +57,8 @@ class FasterRCNN(nn.Module):
         torch.Tensor,
         # list[torch.Tensor],
         # list[torch.Tensor],
-        # float,
-        # float,
+        float,
+        float,
     ]:
         return super().__call__(fpn_map, anchor_heights, anchor_widths, anchor_positions, raw_cls_gt, raw_bbox_gt)
 
@@ -81,8 +81,8 @@ class FasterRCNN(nn.Module):
         torch.Tensor,
         # list[torch.Tensor],
         # list[torch.Tensor],
-        # float,
-        # float,
+        float,
+        float,
     ]:
         """Forward pass of the model.
 
@@ -158,8 +158,8 @@ class FasterRCNN(nn.Module):
             rpn_bbox_offset_gt,
             # fast_rcnn_cls_gt_nms_fg_and_bg_some,
             # fast_rcnn_bbox_offsets_gt,
-            # rpn_num_fg_bbox_picked,
-            # rpn_num_bg_bbox_picked,
+            rpn_num_fg_bbox_picked,
+            rpn_num_bg_bbox_picked,
         )
 
     def get_fast_rcnn_bbox_offsets_gt(

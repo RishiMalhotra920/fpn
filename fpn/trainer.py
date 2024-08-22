@@ -78,8 +78,8 @@ class Trainer:
         # the first time we log, we log for 11 batches so need num_batches for averaging
         num_batches = 0
         rpn_recall_iou_metrics = {f"rpn_recall@{t}": 0.0 for t in self.rpn_recall_iou_thresholds}
-        # total_rpn_num_fg_bbox_picked = 0.0
-        # total_rpn_num_bg_bbox_picked = 0.0
+        total_rpn_num_fg_bbox_picked = 0.0
+        total_rpn_num_bg_bbox_picked = 0.0
 
         # num_correct = 0
         # num_incorrect_localization = 0
@@ -115,8 +115,8 @@ class Trainer:
                     rpn_bbox_offset_gt,
                     # fast_rcnn_cls_gt_nms_fg_and_bg_some,
                     # fast_rcnn_bbox_offsets_gt,
-                    # rpn_num_fg_bbox_picked,
-                    # rpn_num_bg_bbox_picked,
+                    rpn_num_fg_bbox_picked,
+                    rpn_num_bg_bbox_picked,
                 ) = self.model(fpn_map, anchor_heights, anchor_widths, anchor_positions, raw_cls_gt, raw_bbox_gt)
 
                 # fast_rcnn_cls_pred: tuple[]
@@ -148,8 +148,8 @@ class Trainer:
 
                 total_faster_rcnn_loss += loss_dict["faster_rcnn_total_loss"]
 
-                # total_rpn_num_bg_bbox_picked += rpn_num_bg_bbox_picked
-                # total_rpn_num_fg_bbox_picked += rpn_num_fg_bbox_picked
+                total_rpn_num_bg_bbox_picked += rpn_num_bg_bbox_picked
+                total_rpn_num_fg_bbox_picked += rpn_num_fg_bbox_picked
 
             # # list[num_images, tensor(L_i_fpn_map_1+L_i_fpn_map2+L_i_fpn_map3, 4)]
             # all_rpn_bbox_pred_nms_fg_and_bg_some_per_image = [
@@ -195,8 +195,8 @@ class Trainer:
                         # "train/fast_rcnn_bbox_loss": fast_rcnn_bbox_loss / num_batches,
                         # "train/fast_rcnn_total_loss": fast_rcnn_total_loss / num_batches,
                         # "train/faster_rcnn_total_loss": faster_rcnn_total_loss / num_batches,
-                        # "train/rpn_num_fg_bbox_picked": total_rpn_num_fg_bbox_picked / num_batches,
-                        # "train/rpn_num_bg_bbox_picked": total_rpn_num_bg_bbox_picked / num_batches,
+                        "train/rpn_num_fg_bbox_picked": total_rpn_num_fg_bbox_picked / num_batches,
+                        "train/rpn_num_bg_bbox_picked": total_rpn_num_bg_bbox_picked / num_batches,
                         # "train/accuracy": num_correct / num_objects, #TODO: remember to divide by num_batches
                         # "train/percent_incorrect_localization": num_incorrect_localization / num_objects,
                         # "train/percent_incorrect_other": num_incorrect_other / num_objects,
@@ -214,8 +214,8 @@ class Trainer:
                 fast_rcnn_total_loss = 0.0
                 faster_rcnn_total_loss = 0.0
                 rpn_recall_iou_metrics = {f"rpn_recall@{t}": 0.0 for t in self.rpn_recall_iou_thresholds}
-                # total_rpn_num_fg_bbox_picked = 0
-                # total_rpn_num_bg_bbox_picked = 0
+                total_rpn_num_fg_bbox_picked = 0
+                total_rpn_num_bg_bbox_picked = 0
                 num_batches = 0
 
                 # num_correct = 0
