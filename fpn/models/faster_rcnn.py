@@ -49,7 +49,8 @@ class FasterRCNN(nn.Module):
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
-        # list[torch.Tensor],
+        list[torch.Tensor],
+        list[torch.Tensor],
         # list[torch.Tensor],
         # list[torch.Tensor],
         torch.Tensor,
@@ -72,7 +73,8 @@ class FasterRCNN(nn.Module):
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
-        # list[torch.Tensor],
+        list[torch.Tensor],
+        list[torch.Tensor],
         # list[torch.Tensor],
         # list[torch.Tensor],
         torch.Tensor,
@@ -111,24 +113,25 @@ class FasterRCNN(nn.Module):
             anchor_positions, raw_cls_gt, raw_bbox_gt, self.rpn_pred_to_gt_match_iou_threshold
         )
 
-        # # for inference, pick the top N bboxes according to confidence scores.
-        # (
-        #     rpn_bbox_pred_nms_fg_and_bg_some,
-        #     fast_rcnn_cls_gt_nms_fg_and_bg_some,
-        #     fast_rcnn_bbox_gt_nms_fg_and_bg_some,
-        #     rpn_num_fg_bbox_picked,
-        #     rpn_num_bg_bbox_picked,
-        # ) = self.pick_fg_and_bg_objectness_and_bbox(
-        #     rpn_objectness_pred,
-        #     rpn_bbox_pred,
-        #     rpn_cls_gt,
-        #     rpn_bbox_gt,
-        #     rpn_bbox_pred_and_best_rpn_bbox_gt_iou,
-        #     k=self.num_rpn_rois_to_sample,
-        #     pos_to_neg_ratio=self.rpn_pos_to_neg_ratio,
-        #     pos_iou=self.rpn_pos_iou,
-        #     neg_iou=self.rpn_neg_iou,
-        # )
+        # for inference, pick the top N bboxes according to confidence scores.
+        (
+            rpn_bbox_pred_nms_fg_and_bg_some,
+            rpn_bbox_pred_nms_fg_and_bg_some_fg_mask,
+            fast_rcnn_cls_gt_nms_fg_and_bg_some,
+            fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+            rpn_num_fg_bbox_picked,
+            rpn_num_bg_bbox_picked,
+        ) = self.pick_fg_and_bg_objectness_and_bbox(
+            rpn_objectness_pred,
+            rpn_bbox_pred,
+            rpn_cls_gt,
+            rpn_bbox_gt,
+            rpn_bbox_pred_and_best_rpn_bbox_gt_iou,
+            k=self.num_rpn_rois_to_sample,
+            pos_to_neg_ratio=self.rpn_pos_to_neg_ratio,
+            pos_iou=self.rpn_pos_iou,
+            neg_iou=self.rpn_neg_iou,
+        )
 
         # fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox, fast_rcnn_bbox_offsets_for_all_classes_for_some_rpn_bbox = self.fast_rcnn_classifier(
         #     fpn_map, rpn_bbox_pred_nms_fg_and_bg_some
@@ -147,7 +150,8 @@ class FasterRCNN(nn.Module):
         return (
             rpn_objectness_pred,
             rpn_bbox_offset_pred,
-            # rpn_bbox_pred_nms_fg_and_bg_some,
+            rpn_bbox_pred_nms_fg_and_bg_some,
+            rpn_bbox_pred_nms_fg_and_bg_some_fg_mask,
             # fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
             # fast_rcnn_bbox_offsets_pred,
             rpn_objectness_gt,
@@ -315,7 +319,7 @@ class FasterRCNN(nn.Module):
         pos_to_neg_ratio: float,
         pos_iou: float,
         neg_iou: float,
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], float, float]:
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], float, float]:
         """Apply non max suprression and pick the top k foreground and background objectness scores and their corresponding bounding boxes.
 
         If there are not enough foreground or background boxes, we repeat sample the positive or negative boxes.
@@ -334,6 +338,7 @@ class FasterRCNN(nn.Module):
         list_of_rpn_bbox_pred_nms_fg_and_bg_some = []
         list_of_fast_rcnn_cls_gt_nms_fg_and_bg_some = []
         list_of_fast_rcnn_bbox_gt_nms_fg_and_bg_some = []
+        list_of_rpn_bbox_pred_nms_fg_and_bg_some_fg_mask = []
 
         total_rpn_num_fg_bbox_picked = 0
         total_rpn_num_bg_bbox_picked = 0
@@ -370,11 +375,16 @@ class FasterRCNN(nn.Module):
             raw_fast_rcnn_bbox_gt_nms_fg_some = raw_fast_rcnn_bbox_gt_nms[is_rpn_pred_fg][random_pos_index, :]  # (b, some, 4)
 
             rpn_bbox_pred_nms_fg_and_bg_some = torch.cat([rpn_bbox_pred_nms_fg_some, rpn_bbox_pred_nms_bg_some], dim=0)  # (b, k, 4)
+            rpn_bbox_pred_nms_fg_and_bg_some_fg_mask = torch.cat(
+                [torch.ones(len(rpn_bbox_pred_nms_fg_some), device=self.device), torch.zeros(len(rpn_bbox_pred_nms_bg_some), device=self.device)],
+                dim=0,
+            )
             raw_fast_rcnn_cls_gt_nms_fg_and_bg_some = torch.cat([raw_fast_rcnn_cls_gt_nms_fg_some, raw_fast_rcnn_cls_gt_nms_bg_some], dim=0)  # (b, k)
             raw_fast_rcnn_bbox_gt_nms_fg_and_bg_some = torch.cat(
                 [raw_fast_rcnn_bbox_gt_nms_fg_some, raw_fast_rcnn_bbox_gt_nms_bg_some], dim=0
             )  # (b, k, 4)
             list_of_rpn_bbox_pred_nms_fg_and_bg_some.append(rpn_bbox_pred_nms_fg_and_bg_some)
+            list_of_rpn_bbox_pred_nms_fg_and_bg_some_fg_mask.append(rpn_bbox_pred_nms_fg_and_bg_some_fg_mask)
             list_of_fast_rcnn_cls_gt_nms_fg_and_bg_some.append(raw_fast_rcnn_cls_gt_nms_fg_and_bg_some)
             list_of_fast_rcnn_bbox_gt_nms_fg_and_bg_some.append(raw_fast_rcnn_bbox_gt_nms_fg_and_bg_some)
 
@@ -383,6 +393,7 @@ class FasterRCNN(nn.Module):
 
         return (
             list_of_rpn_bbox_pred_nms_fg_and_bg_some,
+            list_of_rpn_bbox_pred_nms_fg_and_bg_some_fg_mask,
             list_of_fast_rcnn_cls_gt_nms_fg_and_bg_some,
             list_of_fast_rcnn_bbox_gt_nms_fg_and_bg_some,
             total_rpn_num_fg_bbox_picked / b,

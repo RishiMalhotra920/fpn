@@ -179,7 +179,7 @@ class RunManager:
         except Exception as e:
             print(f"Failed to remove directory: {e}")
 
-    def save_model(self, model: torch.nn.Module, epoch: int) -> None:
+    def save_model(self, checkpoint_dir: str, model: torch.nn.Module, epoch: int) -> None:
         """Saves a PyTorch model to a target directory.
 
         Args:
@@ -201,4 +201,4 @@ class RunManager:
         model_save_path = self.temp_dir / f"{epoch}.pth"
         print(f"[INFO] Saving model to {model_save_path}")
         torch.save(obj=model.state_dict(), f=model_save_path)
-        self.run[f"checkpoints/epoch_{epoch}"].upload(str(model_save_path))
+        self.run[f"{checkpoint_dir}/epoch_{epoch}"].upload(str(model_save_path))

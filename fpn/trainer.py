@@ -10,6 +10,7 @@ from fpn.loss.faster_rcnn_loss import FasterRCNNLoss
 from fpn.models.faster_rcnn import FasterRCNN
 from fpn.models.fpn import FPN
 from fpn.run_manager import RunManager
+from fpn.utils.anchor_utils import create_anchors
 
 
 def log_gradients(model: nn.Module) -> None:
@@ -58,67 +59,10 @@ class Trainer:
         self.checkpoint_interval = checkpoint_interval
         self.log_interval = log_interval
         self.device = device
-        # self.metric = metric
         self.backbone = backbone
 
-        # fpn specific things
-        self.fpn_map_small_anchor_scales = torch.tensor([32.0, 64.0, 128.0], device=device)
-        self.fpn_map_medium_anchor_scales = torch.tensor([64.0, 128.0, 256.0], device=device)
-        self.fpn_map_large_anchor_scales = torch.tensor([128.0, 256.0, 512.0], device=device)
-        anchor_ratios = torch.tensor([0.5, 1, 2], device=device)
-        self.all_anchor_scales = [
-            self.fpn_map_small_anchor_scales,
-            self.fpn_map_medium_anchor_scales,
-            self.fpn_map_large_anchor_scales,
-        ]
-
-        self.all_anchor_ratios = [anchor_ratios, anchor_ratios, anchor_ratios]
-
-        self.all_anchor_widths = []  # list([(9, ), (9, ), (9, )])
-        self.all_anchor_heights = []  # list([(9, ), (9, ), (9, )])
-        self.all_anchor_positions = []
-        feature_map_dims = [28, 14, 7]  # found through experimentation
-        for anchor_scales, s in zip(self.all_anchor_scales, feature_map_dims):
-            permutations = torch.cartesian_prod(anchor_scales, anchor_ratios)
-            widths = permutations[:, 0] * permutations[:, 1]  # (9, )
-            heights = permutations[:, 0] * (1 / permutations[:, 1])  # (9, )
-
-            anchor_positions = self._get_anchor_positions(widths, heights, s, image_size[0])
-
-            self.all_anchor_widths.append(widths)
-            self.all_anchor_heights.append(heights)
-            self.all_anchor_positions.append(anchor_positions)
-
-        # self.image_size = image_size
-
+        self.all_anchor_widths, self.all_anchor_heights, self.all_anchor_positions = create_anchors(image_size, device=device)
         self.rpn_recall_iou_thresholds = [0.5, 0.6, 0.7, 0.8, 0.9]
-
-    def _get_anchor_positions(self, anchor_widths: torch.Tensor, anchor_heights: torch.Tensor, s: int, image_dim: int) -> torch.Tensor:
-        """
-        Get anchor positions for the volume in the shape:
-        (1, feature_map_height*feature_map_width*anchor_heights*anchor_widths, 4)
-        """
-        x_step = image_dim / s
-        y_step = image_dim / s
-
-        grid = torch.zeros(s, s, len(anchor_heights), 4, device=self.device)
-
-        x_grid_cell_centers = ((torch.arange(0, s, device=self.device).float() * x_step) + (x_step / 2)).reshape(1, s, 1)
-        y_grid_cell_centers = ((torch.arange(0, s, device=self.device).float() * y_step) + (y_step / 2)).reshape(s, 1, 1)
-
-        anchor_widths_grid = anchor_widths.reshape(1, 1, len(anchor_widths))
-        anchor_heights_grid = anchor_heights.reshape(1, 1, len(anchor_heights))
-
-        # x and y centers broadcast from ( s, 1, 1) to (s, s, 9)
-        # widths and heights broadcast from ( 1, 1, 9) to ( s, s, 9)
-        grid[:, :, :, 0] = x_grid_cell_centers - anchor_widths_grid / 2  # (1, s, s, 9)
-        grid[:, :, :, 1] = y_grid_cell_centers - anchor_heights_grid / 2
-        grid[:, :, :, 2] = x_grid_cell_centers + anchor_widths_grid / 2
-        grid[:, :, :, 3] = y_grid_cell_centers + anchor_heights_grid / 2
-
-        reshaped_grid = grid.reshape(s * s * len(anchor_heights), 4)
-
-        return reshaped_grid  # (s*s*9, 4)
 
     def train_step(self, epoch: int) -> None:
         self.model.train()
@@ -163,7 +107,8 @@ class Trainer:
                 (
                     rpn_objectness_pred,
                     rpn_bbox_offset_pred,
-                    # rpn_bbox_pred_nms_fg_and_bg_some,
+                    rpn_bbox_pred_nms_fg_and_bg_some,
+                    rpn_bbox_pred_nms_fg_and_bg_some_fg_mask,
                     # fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
                     # fast_rcnn_bbox_offsets_pred,
                     rpn_objectness_gt,
@@ -385,14 +330,19 @@ class Trainer:
         self.run_manager.log_metrics({"learning_rate": self.optimizer.param_groups[0]["lr"]}, self.epoch_start)
 
         for epoch in tqdm(range(self.epoch_start, self.epoch_end), desc="Epochs"):
+            # for testing
+            # self.run_manager.save_model("checkpoints/faster_rcnn", self.model, epoch)
+            # self.run_manager.save_model("checkpoints/fpn_backbone", self.backbone, epoch)
+
             self.train_step(epoch)
 
             self.run_manager.log_metrics({"learning_rate": self.optimizer.param_groups[0]["lr"]}, epoch + 1)
 
             # saves model/epoch_5 at the end of epoch 5. epochs are 0 indexed.
             if epoch % self.checkpoint_interval == 0 or epoch == self.epoch_end - 1:
-                pass
+                # pass
                 # self.test_step(epoch + 1)
-                # self.run_manager.save_model(self.model, epoch)
+                self.run_manager.save_model("checkpoints/faster_rcnn", self.model, epoch)
+                self.run_manager.save_model("checkpoints/fpn_backbone", self.backbone, epoch)
 
             self.lr_scheduler.step()

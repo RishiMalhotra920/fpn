@@ -10,13 +10,13 @@ from torchvision.transforms import v2 as transforms_v2
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))  # noqa: E402
 
-from fpn.checkpoint_loader import load_checkpoint
 from fpn.data import BACKGROUND_CLASS_INDEX, CustomVOCDetectionDataset
 from fpn.loss import FasterRCNNLoss
 from fpn.lr_scheduler import get_custom_lr_scheduler, get_fixed_lr_scheduler
 from fpn.models import FPN, FasterRCNN
 from fpn.run_manager import RunManager
 from fpn.trainer import Trainer
+from fpn.utils.checkpoint_loader import load_checkpoint
 
 # from typing_extensions
 
