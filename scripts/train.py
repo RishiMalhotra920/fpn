@@ -63,6 +63,10 @@ def main(
     rpn_pos_to_neg_ratio: int = typer.Option(1.0, help="Number of positive RoIs to sample for RPN"),
     rpn_pos_iou: float = typer.Option(0.7, help="When sampling rpn preds, we sample fg samples from matches with iou threshold > rpn_pos_iou"),
     rpn_neg_iou: float = typer.Option(0.3, help="When sampling rpn gts, we sample bg samples from matches with iou threshold < rpn_neg_iou"),
+    lambda_rpn_objectness=typer.Option(1, help="Weight for rpn objectness loss"),
+    lambda_rpn_bbox=typer.Option(20, help="Weight for rpn bbox loss"),
+    lambda_fast_rcnn_cls=typer.Option(10, help="Weight for fast rcnn cls loss"),
+    lambda_fast_rcnn_bbox=typer.Option(10, help="Weight for fast rcnn bbox loss"),
     train_dir: Path = typer.Option(Path(config["image_net_data_dir"]) / "train", help="Directory containing training data"),
     val_dir: Path = typer.Option(Path(config["image_net_data_dir"]) / "val", help="Directory containing validation data"),
 ):
@@ -159,7 +163,14 @@ def main(
         # Set loss and optimizer
         # loss_fn = torch.nn.CrossEntropyLoss()
 
-        loss_fn = FasterRCNNLoss(BACKGROUND_CLASS_INDEX, device=device)
+        loss_fn = FasterRCNNLoss(
+            BACKGROUND_CLASS_INDEX,
+            lambda_rpn_objectness=lambda_rpn_objectness,
+            lambda_rpn_bbox=lambda_rpn_bbox,
+            lambda_fast_rcnn_cls=lambda_fast_rcnn_cls,
+            lambda_fast_rcnn_bbox=lambda_fast_rcnn_bbox,
+            device=device,
+        )
 
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 

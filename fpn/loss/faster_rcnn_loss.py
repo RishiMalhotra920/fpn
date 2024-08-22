@@ -8,13 +8,26 @@ from fpn.loss.rpn_loss import RPNLoss
 
 
 class FasterRCNNLoss(nn.Module):
-    def __init__(self, background_class_idx: int, *, device: str):
+    def __init__(
+        self,
+        background_class_idx: int,
+        *,
+        lambda_rpn_objectness=1,
+        lambda_rpn_bbox=10,
+        lambda_fast_rcnn_cls=10,
+        lambda_fast_rcnn_bbox=10,
+        device: str,
+    ):
         super().__init__()
         self.background_class_idx = background_class_idx
         self.rpn_loss = RPNLoss()
         self.fast_rcnn_loss = FastRCNNLoss(background_class_idx)
         # self.metric = YOLOMetrics()
         self.device = device
+        self.lambda_rpn_objectness = lambda_rpn_objectness
+        self.lambda_rpn_bbox = lambda_rpn_bbox
+        self.lambda_fast_rcnn_cls = lambda_fast_rcnn_cls
+        self.lambda_fast_rcnn_bbox = lambda_fast_rcnn_bbox
 
     def __call__(
         self,
@@ -28,10 +41,6 @@ class FasterRCNNLoss(nn.Module):
         # fast_rcnn_bbox_gt_nms_fg_and_bg_some: list[torch.Tensor],
         *,
         device: str,
-        lambda_rpn_objectness=1,
-        lambda_rpn_bbox=10,
-        lambda_fast_rcnn_cls=10,
-        lambda_fast_rcnn_bbox=10,
     ) -> dict[str, torch.Tensor]:
         return super().__call__(
             rpn_objectness_pred,
@@ -43,10 +52,6 @@ class FasterRCNNLoss(nn.Module):
             # fast_rcnn_cls_gt_nms_fg_and_bg_some,
             # fast_rcnn_bbox_gt_nms_fg_and_bg_some,
             device=device,
-            lambda_rpn_objectness=lambda_rpn_objectness,
-            lambda_rpn_bbox=lambda_rpn_bbox,
-            lambda_fast_rcnn_cls=lambda_fast_rcnn_cls,
-            lambda_fast_rcnn_bbox=lambda_fast_rcnn_bbox,
         )
 
     def forward(
@@ -61,18 +66,14 @@ class FasterRCNNLoss(nn.Module):
         # fast_rcnn_bbox_offsets_gt: list[torch.Tensor],
         *,
         device: str,
-        lambda_rpn_objectness=1,
-        lambda_rpn_bbox=10,
-        lambda_fast_rcnn_cls=10,
-        lambda_fast_rcnn_bbox=10,
     ) -> dict[str, torch.Tensor]:
         rpn_loss_dict = self.rpn_loss(
             rpn_objectness_pred,
             rpn_bbox_offset_pred,
             rpn_objectness_gt,
             rpn_bbox_offset_gt,
-            lambda_rpn_objectness=lambda_rpn_objectness,
-            lambda_rpn_bbox=lambda_rpn_bbox,
+            lambda_rpn_objectness=self.lambda_rpn_objectness,
+            lambda_rpn_bbox=self.lambda_rpn_bbox,
             device=device,
         )
 
