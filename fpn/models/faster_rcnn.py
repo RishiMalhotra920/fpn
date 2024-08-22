@@ -49,15 +49,15 @@ class FasterRCNN(nn.Module):
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
-        list[torch.Tensor],
-        list[torch.Tensor],
-        list[torch.Tensor],
+        # list[torch.Tensor],
+        # list[torch.Tensor],
+        # list[torch.Tensor],
         torch.Tensor,
         torch.Tensor,
-        list[torch.Tensor],
-        list[torch.Tensor],
-        float,
-        float,
+        # list[torch.Tensor],
+        # list[torch.Tensor],
+        # float,
+        # float,
     ]:
         return super().__call__(fpn_map, anchor_heights, anchor_widths, anchor_positions, raw_cls_gt, raw_bbox_gt)
 
@@ -72,15 +72,15 @@ class FasterRCNN(nn.Module):
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
-        list[torch.Tensor],
-        list[torch.Tensor],
-        list[torch.Tensor],
+        # list[torch.Tensor],
+        # list[torch.Tensor],
+        # list[torch.Tensor],
         torch.Tensor,
         torch.Tensor,
-        list[torch.Tensor],
-        list[torch.Tensor],
-        float,
-        float,
+        # list[torch.Tensor],
+        # list[torch.Tensor],
+        # float,
+        # float,
     ]:
         """Forward pass of the model.
 
@@ -111,51 +111,51 @@ class FasterRCNN(nn.Module):
             anchor_positions, raw_cls_gt, raw_bbox_gt, self.rpn_pred_to_gt_match_iou_threshold
         )
 
-        # for inference, pick the top N bboxes according to confidence scores.
-        (
-            rpn_bbox_pred_nms_fg_and_bg_some,
-            fast_rcnn_cls_gt_nms_fg_and_bg_some,
-            fast_rcnn_bbox_gt_nms_fg_and_bg_some,
-            rpn_num_fg_bbox_picked,
-            rpn_num_bg_bbox_picked,
-        ) = self.pick_fg_and_bg_objectness_and_bbox(
-            rpn_objectness_pred,
-            rpn_bbox_pred,
-            rpn_cls_gt,
-            rpn_bbox_gt,
-            rpn_bbox_pred_and_best_rpn_bbox_gt_iou,
-            k=self.num_rpn_rois_to_sample,
-            pos_to_neg_ratio=self.rpn_pos_to_neg_ratio,
-            pos_iou=self.rpn_pos_iou,
-            neg_iou=self.rpn_neg_iou,
-        )
-
-        fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox, fast_rcnn_bbox_offsets_for_all_classes_for_some_rpn_bbox = self.fast_rcnn_classifier(
-            fpn_map, rpn_bbox_pred_nms_fg_and_bg_some
-        )  # list[(num_rois, num_classes)], list[(num_rois, num_classes, 4)]
-
-        fast_rcnn_bbox_offsets_pred = self.get_fast_rcnn_bbox_offsets_for_gt_class(
-            fast_rcnn_cls_gt_nms_fg_and_bg_some, fast_rcnn_bbox_offsets_for_all_classes_for_some_rpn_bbox
-        )
-
-        fast_rcnn_bbox_offsets_gt = self.get_fast_rcnn_bbox_offsets_gt(rpn_bbox_pred_nms_fg_and_bg_some, fast_rcnn_bbox_gt_nms_fg_and_bg_some)
-
-        # fast_rcnn_bbox_pred_for_some_rpn_bbox = self.apply_offsets_to_fast_rcnn_bbox(
-        # rpn_bbox_pred_nms_fg_and_bg_some, fast_rcnn_bbox_offsets_for_gt_class_for_some_rpn_bbox
+        # # for inference, pick the top N bboxes according to confidence scores.
+        # (
+        #     rpn_bbox_pred_nms_fg_and_bg_some,
+        #     fast_rcnn_cls_gt_nms_fg_and_bg_some,
+        #     fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+        #     rpn_num_fg_bbox_picked,
+        #     rpn_num_bg_bbox_picked,
+        # ) = self.pick_fg_and_bg_objectness_and_bbox(
+        #     rpn_objectness_pred,
+        #     rpn_bbox_pred,
+        #     rpn_cls_gt,
+        #     rpn_bbox_gt,
+        #     rpn_bbox_pred_and_best_rpn_bbox_gt_iou,
+        #     k=self.num_rpn_rois_to_sample,
+        #     pos_to_neg_ratio=self.rpn_pos_to_neg_ratio,
+        #     pos_iou=self.rpn_pos_iou,
+        #     neg_iou=self.rpn_neg_iou,
         # )
+
+        # fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox, fast_rcnn_bbox_offsets_for_all_classes_for_some_rpn_bbox = self.fast_rcnn_classifier(
+        #     fpn_map, rpn_bbox_pred_nms_fg_and_bg_some
+        # )  # list[(num_rois, num_classes)], list[(num_rois, num_classes, 4)]
+
+        # fast_rcnn_bbox_offsets_pred = self.get_fast_rcnn_bbox_offsets_for_gt_class(
+        #     fast_rcnn_cls_gt_nms_fg_and_bg_some, fast_rcnn_bbox_offsets_for_all_classes_for_some_rpn_bbox
+        # )
+
+        # fast_rcnn_bbox_offsets_gt = self.get_fast_rcnn_bbox_offsets_gt(rpn_bbox_pred_nms_fg_and_bg_some, fast_rcnn_bbox_gt_nms_fg_and_bg_some)
+
+        # # fast_rcnn_bbox_pred_for_some_rpn_bbox = self.apply_offsets_to_fast_rcnn_bbox(
+        # # rpn_bbox_pred_nms_fg_and_bg_some, fast_rcnn_bbox_offsets_for_gt_class_for_some_rpn_bbox
+        # # )
 
         return (
             rpn_objectness_pred,
             rpn_bbox_offset_pred,
-            rpn_bbox_pred_nms_fg_and_bg_some,
-            fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
-            fast_rcnn_bbox_offsets_pred,
+            # rpn_bbox_pred_nms_fg_and_bg_some,
+            # fast_rcnn_cls_probs_for_all_classes_for_some_rpn_bbox,
+            # fast_rcnn_bbox_offsets_pred,
             rpn_objectness_gt,
             rpn_bbox_offset_gt,
-            fast_rcnn_cls_gt_nms_fg_and_bg_some,
-            fast_rcnn_bbox_offsets_gt,
-            rpn_num_fg_bbox_picked,
-            rpn_num_bg_bbox_picked,
+            # fast_rcnn_cls_gt_nms_fg_and_bg_some,
+            # fast_rcnn_bbox_offsets_gt,
+            # rpn_num_fg_bbox_picked,
+            # rpn_num_bg_bbox_picked,
         )
 
     def get_fast_rcnn_bbox_offsets_gt(
