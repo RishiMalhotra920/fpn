@@ -48,8 +48,8 @@ def main(
     batch_size: int = typer.Option(..., help="Batch size for training the model"),
     lr_scheduler_name: str = typer.Option(..., help="Scheduler for the optimizer or custom"),
     lr: float = typer.Option(..., help="Learning rate for fixed scheduler or starting learning rate for custom scheduler"),
-    nms_threshold: float = typer.Option(0.5, help="Non-maximum suppression threshold"),
-    dropout: float = typer.Option(..., help="Dropout rate for the model"),
+    nms_threshold: float = typer.Option(0.5, help="Non-maximum suppression threshold for fast rcnn classifier final outputs"),
+    fast_rcnn_dropout: float = typer.Option(..., help="Dropout rate for the fast rcnn classifier"),
     freeze_backbone: bool = typer.Option(True, help="Freeze the backbone"),
     run_name: str = typer.Option(None, help="A name for the run"),
     checkpoint_interval: int = typer.Option(1, help="The number of epochs to wait before saving model checkpoint"),
@@ -59,6 +59,10 @@ def main(
     ),
     log_interval: int = typer.Option(10, help="The number of batches to wait before logging training status"),
     device: str = typer.Option("cpu", help="Device to train the model on"),
+    num_rpn_rois_to_sample: int = typer.Option(256, help="Total number of RPN RoIs to sample across all feature map scales!"),
+    rpn_pos_to_neg_ratio: int = typer.Option(1.0, help="Number of positive RoIs to sample for RPN"),
+    rpn_pos_iou: float = typer.Option(0.7, help="When sampling rpn preds, we sample fg samples from matches with iou threshold > rpn_pos_iou"),
+    rpn_neg_iou: float = typer.Option(0.3, help="When sampling rpn gts, we sample bg samples from matches with iou threshold < rpn_neg_iou"),
     train_dir: Path = typer.Option(Path(config["image_net_data_dir"]) / "train", help="Directory containing training data"),
     val_dir: Path = typer.Option(Path(config["image_net_data_dir"]) / "val", help="Directory containing validation data"),
 ):
@@ -109,7 +113,19 @@ def main(
         # Create model with help from model_builder.py
         # make it so that we minimize the sum of all the losses in the fpn!!
         backbone = FPN(freeze_backbone, device=device).to(device)
-        faster_rcnn_with_fpn_model = FasterRCNN((image_dim, image_dim), nms_threshold, device=device)
+
+        faster_rcnn_with_fpn_model = FasterRCNN(
+            (image_dim, image_dim),
+            nms_threshold=nms_threshold,
+            # divide by three because we run this faster rcnn for three feature maps
+            fast_rcnn_dropout=fast_rcnn_dropout,
+            num_rpn_rois_to_sample=num_rpn_rois_to_sample // 3,
+            rpn_pos_to_neg_ratio=rpn_pos_to_neg_ratio,
+            rpn_pos_iou=rpn_pos_iou,
+            rpn_neg_iou=rpn_neg_iou,
+            device=device,
+        )
+        # faster_rcnn_with_fpn_model = FasterRCNN((image_dim, image_dim), nms_threshold, device=device)
 
         # run_manager = RunManager()  # empty run for testing!
 
@@ -143,7 +159,7 @@ def main(
         # Set loss and optimizer
         # loss_fn = torch.nn.CrossEntropyLoss()
 
-        loss_fn = FasterRCNNLoss(BACKGROUND_CLASS_INDEX, device)
+        loss_fn = FasterRCNNLoss(BACKGROUND_CLASS_INDEX, device=device)
 
         optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
@@ -167,7 +183,7 @@ def main(
             "loss_fn": "YOLOLossv0",
             "optimizer": "Adam",
             "device": device,
-            "dropout": dropout,
+            "fast_rcnn_dropout": fast_rcnn_dropout,
             "num_workers": num_workers,
             "command": " ".join(sys.argv),
         }
@@ -187,9 +203,8 @@ def main(
             run_manager=run_manager,
             checkpoint_interval=checkpoint_interval,
             log_interval=log_interval,
-            device=device,
             image_size=(image_dim, image_dim),
-            nms_threshold=nms_threshold,
+            device=device,
         )
 
         trainer.train()

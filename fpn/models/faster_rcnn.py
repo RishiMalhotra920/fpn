@@ -17,11 +17,12 @@ class FasterRCNN(nn.Module):
         nms_threshold: float,
         *,
         device: str,
-        num_rpn_rois_to_sample: int = 2000,
-        rpn_pos_to_neg_ratio: float = 0.33,
-        rpn_pos_iou: float = 0.7,
-        rpn_neg_iou: float = 0.3,
-        match_iou_threshold: float = 0.5,
+        fast_rcnn_dropout: float,
+        num_rpn_rois_to_sample: int,
+        rpn_pos_to_neg_ratio: float,
+        rpn_pos_iou: float,
+        rpn_neg_iou: float,
+        rpn_pred_to_gt_match_iou_threshold: float = 0.5,
     ):
         super().__init__()
         self.image_size = image_size
@@ -30,11 +31,11 @@ class FasterRCNN(nn.Module):
         self.rpn_pos_to_neg_ratio = rpn_pos_to_neg_ratio
         self.rpn_pos_iou = rpn_pos_iou
         self.rpn_neg_iou = rpn_neg_iou
-        self.match_iou_threshold = match_iou_threshold
+        self.rpn_pred_to_gt_match_iou_threshold = rpn_pred_to_gt_match_iou_threshold
 
         # these changes 2
-        self.rpn = RPN(in_channels=256, num_anchor_scales=3, num_anchor_ratios=3, device=device)
-        self.fast_rcnn_classifier = FastRCNNClassifier(num_classes=21)
+        self.rpn = RPN(in_channels=256, num_anchor_scales=3, num_anchor_ratios=3, device=device).to(device)
+        self.fast_rcnn_classifier = FastRCNNClassifier(num_classes=21, dropout=fast_rcnn_dropout).to(device)
         self.device = device
 
     def __call__(
@@ -55,6 +56,8 @@ class FasterRCNN(nn.Module):
         torch.Tensor,
         list[torch.Tensor],
         list[torch.Tensor],
+        float,
+        float,
     ]:
         return super().__call__(fpn_map, anchor_heights, anchor_widths, anchor_positions, raw_cls_gt, raw_bbox_gt)
 
@@ -76,6 +79,8 @@ class FasterRCNN(nn.Module):
         torch.Tensor,
         list[torch.Tensor],
         list[torch.Tensor],
+        float,
+        float,
     ]:
         """Forward pass of the model.
 
@@ -103,7 +108,7 @@ class FasterRCNN(nn.Module):
         # should do this matching with anchors btw for stability.
         # get rpn_bbox_gt from here as well.
         rpn_objectness_gt, rpn_cls_gt, rpn_bbox_gt, rpn_bbox_offset_gt, rpn_bbox_pred_and_best_rpn_bbox_gt_iou = self.extract_rpn_gt(
-            anchor_positions, raw_cls_gt, raw_bbox_gt, self.match_iou_threshold
+            anchor_positions, raw_cls_gt, raw_bbox_gt, self.rpn_pred_to_gt_match_iou_threshold
         )
 
         # for inference, pick the top N bboxes according to confidence scores.
@@ -111,6 +116,8 @@ class FasterRCNN(nn.Module):
             rpn_bbox_pred_nms_fg_and_bg_some,
             fast_rcnn_cls_gt_nms_fg_and_bg_some,
             fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+            rpn_num_fg_bbox_picked,
+            rpn_num_bg_bbox_picked,
         ) = self.pick_fg_and_bg_objectness_and_bbox(
             rpn_objectness_pred,
             rpn_bbox_pred,
@@ -147,6 +154,8 @@ class FasterRCNN(nn.Module):
             rpn_bbox_offset_gt,
             fast_rcnn_cls_gt_nms_fg_and_bg_some,
             fast_rcnn_bbox_offsets_gt,
+            rpn_num_fg_bbox_picked,
+            rpn_num_bg_bbox_picked,
         )
 
     def get_fast_rcnn_bbox_offsets_gt(
@@ -306,7 +315,7 @@ class FasterRCNN(nn.Module):
         pos_to_neg_ratio: float,
         pos_iou: float,
         neg_iou: float,
-    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], float, float]:
         """Apply non max suprression and pick the top k foreground and background objectness scores and their corresponding bounding boxes.
 
         If there are not enough foreground or background boxes, we repeat sample the positive or negative boxes.
@@ -326,6 +335,9 @@ class FasterRCNN(nn.Module):
         list_of_fast_rcnn_cls_gt_nms_fg_and_bg_some = []
         list_of_fast_rcnn_bbox_gt_nms_fg_and_bg_some = []
 
+        total_rpn_num_fg_bbox_picked = 0
+        total_rpn_num_bg_bbox_picked = 0
+
         for image_idx in range(rpn_bbox_pred.shape[0]):
             # rpn_bbox_pred_nms_indices - these are the indices of the boxes that are kept after nms
             rpn_bbox_pred_nms_indices = torchvision.ops.nms(rpn_bbox_pred[image_idx], rpn_objectness_pred[image_idx], self.nms_threshold)
@@ -338,16 +350,21 @@ class FasterRCNN(nn.Module):
             is_rpn_pred_fg = rpn_bbox_pred_and_best_rpn_bbox_gt_iou_nms > pos_iou
             # is_rpn_pred_fg = rpn_objectness_pred_nms > pos_iou  # (#foreground predicted boxes)
 
+            total_num_pos_box = int(is_rpn_pred_fg.sum().item())
+            total_num_bg_bbox = int((is_rpn_pred_bg).sum().item())
+            num_fg_box_to_pick = int(pos_to_neg_ratio / (1 + pos_to_neg_ratio)) * k
+            num_bg_box_to_pick = int(1 / (1 + pos_to_neg_ratio) * k)
+            num_fg_box_to_pick_capped = min(total_num_pos_box, num_fg_box_to_pick)
+            num_bg_box_to_pick_capped = min(total_num_bg_bbox, num_bg_box_to_pick)
             # pick some random bg bboxes
-            num_bg_bbox = (is_rpn_pred_bg).sum().item()
-            random_neg_index = torch.randperm(int(min(num_bg_bbox, k) * (1 - pos_to_neg_ratio)), device=self.device)  # eg: [3, 1, 2, 0, ... 891]
+
+            random_neg_index = torch.randperm(num_bg_box_to_pick_capped, device=self.device)  # eg: [3, 1, 2, 0, ... 891]
             rpn_bbox_pred_nms_bg_some = rpn_bbox_pred_nms[is_rpn_pred_bg][random_neg_index, :]  # (b, some, 4)
             raw_fast_rcnn_cls_gt_nms_bg_some = raw_fast_rcnn_cls_gt_nms[is_rpn_pred_bg][random_neg_index]  # (b, some)
             raw_fast_rcnn_bbox_gt_nms_bg_some = raw_fast_rcnn_bbox_gt_nms[is_rpn_pred_bg][random_neg_index, :]  # (b, some, 4)
 
             # pick some random fg bboxes
-            num_fg_bbox = is_rpn_pred_fg.sum().item()
-            random_pos_index = torch.randperm(int(min(num_fg_bbox, k) * pos_to_neg_ratio), device=self.device)  # (some) eg: [3, 1, 2, 0, ... 891]
+            random_pos_index = torch.randperm(num_fg_box_to_pick_capped, device=self.device)  # (some) eg: [3, 1, 2, 0, ... 891]
             rpn_bbox_pred_nms_fg_some = rpn_bbox_pred_nms[is_rpn_pred_fg][random_pos_index, :]  # (b, some, 4)
             raw_fast_rcnn_cls_gt_nms_fg_some = raw_fast_rcnn_cls_gt_nms[is_rpn_pred_fg][random_pos_index]  # (b, some)
             raw_fast_rcnn_bbox_gt_nms_fg_some = raw_fast_rcnn_bbox_gt_nms[is_rpn_pred_fg][random_pos_index, :]  # (b, some, 4)
@@ -361,10 +378,15 @@ class FasterRCNN(nn.Module):
             list_of_fast_rcnn_cls_gt_nms_fg_and_bg_some.append(raw_fast_rcnn_cls_gt_nms_fg_and_bg_some)
             list_of_fast_rcnn_bbox_gt_nms_fg_and_bg_some.append(raw_fast_rcnn_bbox_gt_nms_fg_and_bg_some)
 
+            total_rpn_num_fg_bbox_picked += num_fg_box_to_pick_capped
+            total_rpn_num_bg_bbox_picked += num_bg_box_to_pick_capped
+
         return (
             list_of_rpn_bbox_pred_nms_fg_and_bg_some,
             list_of_fast_rcnn_cls_gt_nms_fg_and_bg_some,
             list_of_fast_rcnn_bbox_gt_nms_fg_and_bg_some,
+            total_rpn_num_fg_bbox_picked / b,
+            total_rpn_num_bg_bbox_picked / b,
         )
 
     def predict(self, dataset: Dataset) -> list[np.ndarray]:

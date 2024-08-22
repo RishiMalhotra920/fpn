@@ -8,7 +8,7 @@ from fpn.loss.rpn_loss import RPNLoss
 
 
 class FasterRCNNLoss(nn.Module):
-    def __init__(self, background_class_idx: int, device: str):
+    def __init__(self, background_class_idx: int, *, device: str):
         super().__init__()
         self.background_class_idx = background_class_idx
         self.rpn_loss = RPNLoss()

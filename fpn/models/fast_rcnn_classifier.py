@@ -14,7 +14,7 @@ class FastRCNNClassifier(nn.Module):
     bbox scores. pick the class with the highest score and use the corresponding bbox.
     """
 
-    def __init__(self, num_classes: int, dropout_prob: float = 0.5):
+    def __init__(self, num_classes: int, dropout: float):
         super().__init__()
         self.roi_align = RoIAlign(output_size=(7, 7), spatial_scale=1.0, sampling_ratio=-1)
         # mean and variance computed across the batch and across the spatial dimensions.
@@ -25,7 +25,7 @@ class FastRCNNClassifier(nn.Module):
         self.bn1 = nn.BatchNorm1d(1024)
         self.fc2 = nn.Linear(1024, 1024)
         self.bn2 = nn.BatchNorm1d(1024)
-        self.dropout = nn.Dropout(p=dropout_prob)
+        self.dropout = nn.Dropout(p=dropout)
         self.cls = nn.Linear(1024, num_classes)
         self.bbox_layer = nn.Linear(1024, num_classes * 4)
 

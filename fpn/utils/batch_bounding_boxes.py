@@ -28,13 +28,15 @@ class BatchBoundingBoxes:
             self._bbox = boxes_tensor
 
     @staticmethod
-    def _center_to_corner(boxes):
+    def _center_to_corner(boxes, *, image_dim=224):
         new_boxes = torch.empty_like(boxes)
         new_boxes[..., 0] = boxes[..., 0] - boxes[..., 2] / 2  # x1
         new_boxes[..., 1] = boxes[..., 1] - boxes[..., 3] / 2  # y1
         new_boxes[..., 2] = boxes[..., 0] + boxes[..., 2] / 2  # x2
         new_boxes[..., 3] = boxes[..., 1] + boxes[..., 3] / 2  # y2
-        return new_boxes
+        new_boxes_clamped = torch.clamp(new_boxes, 0, image_dim)
+
+        return new_boxes_clamped
 
     @staticmethod
     def _corner_to_center(boxes):
