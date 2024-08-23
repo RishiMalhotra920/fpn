@@ -46,6 +46,7 @@ class Trainer:
         *,
         device: str,
         image_size: tuple[int, int],
+        feature_map_dims: list[int],
     ) -> None:
         self.model = model
         self.train_dataloader = train_dataloader
@@ -61,7 +62,7 @@ class Trainer:
         self.device = device
         self.backbone = backbone
 
-        self.all_anchor_widths, self.all_anchor_heights, self.all_anchor_positions = create_anchors(image_size, device=device)
+        self.all_anchor_widths, self.all_anchor_heights, self.all_anchor_positions = create_anchors(image_size, feature_map_dims, device=device)
         self.rpn_recall_iou_thresholds = [0.5, 0.6, 0.7, 0.8, 0.9]
 
     def train_step(self, epoch: int) -> None:

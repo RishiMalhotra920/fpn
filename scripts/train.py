@@ -43,7 +43,7 @@ def main(
     freeze_backbone: bool = typer.Option(True, help="Freeze the backbone"),
     run_name: str = typer.Option(None, help="A name for the run"),
     checkpoint_interval: int = typer.Option(1, help="The number of epochs to wait before saving model checkpoint"),
-    image_dim: int = typer.Option(800, help="Size of the image"),
+    image_dim: int = typer.Option(224, help="Size of the image"),  # other option is 800
     continue_from_checkpoint_signature: Optional[str] = typer.Option(
         None, help="Checkpoint signature to continue training from eg: RunId:CheckpointPath eg: IM-23:checkpoints/epoch_10.pth"
     ),
@@ -205,6 +205,9 @@ def main(
             checkpoint_interval=checkpoint_interval,
             log_interval=log_interval,
             image_size=(image_dim, image_dim),
+            feature_map_dims=[28, 14, 7],
+            # for input image size of 800
+            # feature_map_dims=[100, 50, 25],  # found through experimentation
             device=device,
         )
 

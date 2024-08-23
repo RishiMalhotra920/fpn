@@ -29,21 +29,22 @@ def _get_anchor_positions(anchor_widths: torch.Tensor, anchor_heights: torch.Ten
     return reshaped_grid  # (s*s*9, 4)
 
 
-def create_anchors(image_size: tuple[int, int], device: str) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
-    fpn_map_small_anchor_scales = torch.tensor([32.0, 64.0, 128.0], device=device)
-    fpn_map_medium_anchor_scales = torch.tensor([64.0, 128.0, 256.0], device=device)
-    fpn_map_large_anchor_scales = torch.tensor([128.0, 256.0, 512.0], device=device)
+def create_anchors(
+    image_size: tuple[int, int], feature_map_dims: list[int], device: str
+) -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:
+    # large fpn maps have the most localization info, so they have the smallest anchors
+    # small fpn maps have the least localization info, so they have the largest anchors
+    large_fpn_map_anchor_scales = torch.tensor([32.0, 64.0, 128.0], device=device)
+    medium_fpn_map_medium_anchor_scales = torch.tensor([64.0, 128.0, 256.0], device=device)
+    small_fpn_map_anchor_scales = torch.tensor([128.0, 256.0, 512.0], device=device)
     anchor_ratios = torch.tensor([0.5, 1, 2], device=device)
-    all_anchor_scales = [
-        fpn_map_small_anchor_scales,
-        fpn_map_medium_anchor_scales,
-        fpn_map_large_anchor_scales,
-    ]
+    all_anchor_scales = [large_fpn_map_anchor_scales, medium_fpn_map_medium_anchor_scales, small_fpn_map_anchor_scales]
 
     all_anchor_widths = []  # list([(9, ), (9, ), (9, )])
     all_anchor_heights = []  # list([(9, ), (9, ), (9, )])
     all_anchor_positions = []
-    feature_map_dims = [100, 50, 25]  # found through experimentation
+    # TODO: pull this out into train.py
+
     for anchor_scales, s in zip(all_anchor_scales, feature_map_dims):
         permutations = torch.cartesian_prod(anchor_scales, anchor_ratios)
         widths = permutations[:, 0] * permutations[:, 1]  # (9, )
