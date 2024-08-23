@@ -1,15 +1,23 @@
 tasks:
-  # - name: yolo_with_data_augmentation_0.001
-  #   git_checkout_target: yolo_with_custom_dataset
-  #   run: |
-  #     python train_yolo.py --run_name yolo_with_data_augmentation_0.001 --continue_from_image_net_checkpoint_signature IM-122:checkpoints/epoch_14 --num_epochs 5 --batch_size 64 --lr_scheduler fixed --lr 0.001 --dropout 0.5 --device cuda --checkpoint_interval 5
-  
-  - name: cont_yolo_with_data_augmentation_0.0001_with_8_threads
-    git_checkout_target: yolo_with_custom_dataset
+
+  - name: 0.001_lr_no_freeze_backbone
+    git_checkout_target: training_just_rpn
     run: |
-      python train_yolo.py --run_name cont_yolo_with_data_augmentation_0.0001_with_8_threads --continue_from_yolo_checkpoint_signature IM-249:checkpoints/epoch_25 --num_epochs 135 --batch_size 64 --lr_scheduler fixed --lr 0.0001 --dropout 0.5 --device cuda --checkpoint_interval 5
-
-
+      python train.py --num-epochs 50 --batch-size 64 --lr-scheduler-name fixed --lr 0.001 --fast-rcnn-dropout 0.0 --run-name 0.001_lr_no_freeze_backbone --checkpoint-interval 10 --no-freeze-backbone --device 
+  
+  - name: 0.01_lr_no_freeze_backbone
+    git_checkout_target: training_just_rpn
+    run: |
+      python train.py --num-epochs 50 --batch-size 64 --lr-scheduler-name fixed --lr 0.01 --fast-rcnn-dropout 0.0 --run-name 0.01_lr_no_freeze_backbone --checkpoint-interval 10 --no-freeze-backbone --device cuda
 
   
+  - name: 0.001_lr_freeze_backbone
+    git_checkout_target: training_just_rpn
+    run: |
+      python train.py --num-epochs 50 --batch-size 64 --lr-scheduler-name fixed --lr 0.001 --fast-rcnn-dropout 0.0 --run-name 0.001_lr_freeze_backbone --checkpoint-interval 10 --freeze-backbone --device cuda
 
+  
+  - name: 0.01_lr_freeze_backbone
+    git_checkout_target: training_just_rpn
+    run: |
+      python train.py --num-epochs 50 --batch-size 64 --lr-scheduler-name fixed --lr 0.01 --fast-rcnn-dropout 0.0 --run-name 0.01_lr_freeze_backbone --checkpoint-interval 10 --freeze-backbone --device cuda
