@@ -42,7 +42,7 @@ def main(
     fast_rcnn_dropout: float = typer.Option(..., help="Dropout rate for the fast rcnn classifier"),
     freeze_backbone: bool = typer.Option(True, help="Freeze the backbone"),
     run_name: str = typer.Option(None, help="A name for the run"),
-    checkpoint_interval: int = typer.Option(1, help="The number of epochs to wait before saving model checkpoint"),
+    checkpoint_interval: int = typer.Option(5, help="The number of epochs to wait before saving model checkpoint"),
     image_dim: int = typer.Option(224, help="Size of the image"),  # other option is 800
     continue_from_checkpoint_signature: Optional[str] = typer.Option(
         None, help="Checkpoint signature to continue training from eg: RunId:CheckpointPath eg: IM-23:checkpoints/epoch_10.pth"

@@ -198,7 +198,7 @@ class RunManager:
             return
 
         self.temp_dir.mkdir(exist_ok=True)
-        model_save_path = self.temp_dir / f"{epoch}.pth"
+        model_save_path = self.temp_dir / checkpoint_dir / f"{epoch}.pth"
         print(f"[INFO] Saving model to {model_save_path}")
         torch.save(obj=model.state_dict(), f=model_save_path)
         self.run[f"{checkpoint_dir}/epoch_{epoch}"].upload(str(model_save_path))
