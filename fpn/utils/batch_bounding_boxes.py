@@ -6,7 +6,7 @@ import torch
 class BatchBoundingBoxes:
     """An image can have multiple boxes. This class stores bounding boxes across multiple images."""
 
-    def __init__(self, boxes_tensor: torch.Tensor, format: str = "corner"):
+    def __init__(self, boxes_tensor: torch.Tensor, *, image_dim: int, format: str = "corner"):
         """
         Initialize BoundingBoxes with a tensor of bounding boxes.
 
@@ -23,12 +23,12 @@ class BatchBoundingBoxes:
             raise ValueError("boxes_tensor must have shape (b, nBB, 4)")
 
         if format == "center":
-            self._bbox = self._center_to_corner(boxes_tensor)
+            self._bbox = self._center_to_corner(boxes_tensor, image_dim=image_dim)
         else:
             self._bbox = boxes_tensor
 
     @staticmethod
-    def _center_to_corner(boxes, *, image_dim=224):
+    def _center_to_corner(boxes, *, image_dim: int):
         new_boxes = torch.empty_like(boxes)
         new_boxes[..., 0] = boxes[..., 0] - boxes[..., 2] / 2  # x1
         new_boxes[..., 1] = boxes[..., 1] - boxes[..., 3] / 2  # y1
@@ -98,6 +98,6 @@ class BatchBoundingBoxes:
 
         bounding_boxes_xywh = anchor_with_offset_positions.reshape(b, s * s * 9, 4)
 
-        bounding_boxes_xyxy = cls(bounding_boxes_xywh, format="center")
+        bounding_boxes_xyxy = cls(bounding_boxes_xywh, image_dim=image_size[0], format="center")
 
         return bounding_boxes_xyxy

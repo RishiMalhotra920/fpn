@@ -18,18 +18,8 @@ from fpn.run_manager import RunManager
 from fpn.trainer import Trainer
 from fpn.utils.checkpoint_loader import load_checkpoint
 
-# from typing_extensions
-
 config = yaml.safe_load(open("config.yaml"))
 
-# to call this script, run the following command:
-# start with learning rate 0.01 to speed the fuck out of the training. if it starts to bounce around, then we can decrease it.
-# python train.py --num_epochs 10 --batch_size 32 --hidden_units 128 --learning_rate 0.01 --run_name cpu_run_on_image_net
-
-# GPU training command:
-# python train.py --num_epochs 50 --batch_size 128 --hidden_units 256 --learning_rate 0.001 --run_name cuda_run_with_256_hidden_units --device cuda
-
-# python train.py --num_epochs 100 --batch_size 1024 --hidden_units 256 --learning_rate 0.005 --run_name image_net_train_deeper_network_and_dropout --device cuda
 
 app = typer.Typer(
     name="Object Detection with FPN and Faster RCNN",
@@ -39,7 +29,7 @@ app = typer.Typer(
 )
 
 
-# python train.py --num-epochs 2 --batch-size 2 --lr-scheduler-name fixed --lr 0.001 --dropout 0.9 --run-name new-run --checkpoint-interval 5
+# python train.py --num-epochs 128 --batch-size 128 --lr-scheduler-name fixed --lr 0.0001 --fast-rcnn-dropout 0.0 --run-name double_weight_on_bbox_loss --checkpoint-interval 5 --no-freeze-backbone --device cuda
 
 
 @app.command()
@@ -53,7 +43,7 @@ def main(
     freeze_backbone: bool = typer.Option(True, help="Freeze the backbone"),
     run_name: str = typer.Option(None, help="A name for the run"),
     checkpoint_interval: int = typer.Option(1, help="The number of epochs to wait before saving model checkpoint"),
-    image_dim: int = typer.Option(224, help="Size of the image"),
+    image_dim: int = typer.Option(800, help="Size of the image"),
     continue_from_checkpoint_signature: Optional[str] = typer.Option(
         None, help="Checkpoint signature to continue training from eg: RunId:CheckpointPath eg: IM-23:checkpoints/epoch_10.pth"
     ),

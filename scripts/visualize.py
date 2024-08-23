@@ -36,7 +36,7 @@ def main(
     ),
     num_images: int = typer.Option(4, help="Number of images to predict on"),
     nms_threshold: float = typer.Option(0.5, help="Non-maximum suppression threshold for fast rcnn classifier final outputs"),
-    image_dim: int = typer.Option(224, help="Size of the image"),
+    image_dim: int = typer.Option(800, help="Size of the image"),
     num_rpn_rois_to_sample: int = typer.Option(256, help="Total number of RPN RoIs to sample across all feature map scales!"),
     rpn_pos_to_neg_ratio: float = typer.Option(1.0, help="Number of positive RoIs to sample for RPN"),
     rpn_pos_iou: float = typer.Option(0.7, help="When sampling rpn preds, we sample fg samples from matches with iou threshold > rpn_pos_iou"),

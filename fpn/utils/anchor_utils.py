@@ -43,7 +43,7 @@ def create_anchors(image_size: tuple[int, int], device: str) -> tuple[list[torch
     all_anchor_widths = []  # list([(9, ), (9, ), (9, )])
     all_anchor_heights = []  # list([(9, ), (9, ), (9, )])
     all_anchor_positions = []
-    feature_map_dims = [28, 14, 7]  # found through experimentation
+    feature_map_dims = [100, 50, 25]  # found through experimentation
     for anchor_scales, s in zip(all_anchor_scales, feature_map_dims):
         permutations = torch.cartesian_prod(anchor_scales, anchor_ratios)
         widths = permutations[:, 0] * permutations[:, 1]  # (9, )
